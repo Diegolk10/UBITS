@@ -439,10 +439,25 @@ const CHILE_OWNER_IDS = new Set([
 ]);
 
 const CHILE_HIERARCHY = [
-  { leader: '91503268',  role: 'Country Manager', reports: ['2067299844'] },
-  { leader: '98399311',  role: 'Team Lead',        reports: ['81608359'] },
-  { leader: '106469395', role: 'Team Lead',        reports: ['209094997', '1609253222'] },
+  { leader: '91503268',  role: 'Sales Manager Chile', reports: ['2067299844'] },
+  { leader: '98399311',  role: 'Team Lead',            reports: ['81608359'] },
+  { leader: '106469395', role: 'Team Lead',            reports: ['209094997', '1609253222'] },
 ];
+
+// Role per owner ID
+const CHILE_ROLES = {
+  '91503268':   'Sales Manager Chile',
+  '98399311':   'Team Lead',
+  '106469395':  'Team Lead',
+  '2067299844': 'Business Developer',
+  '81608359':   'Business Developer',
+  '209094997':  'Business Developer',
+  '1609253222': 'Business Developer',
+};
+
+function ownerRole(id) {
+  return CHILE_ROLES[String(id)] || 'Business Developer';
+}
 
 function normalize(str) {
   return (str||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -710,10 +725,7 @@ async function loadDeals() {
 async function loadMeetings() {
   const d = await proxyGet('meetings');
   const chileIds = new Set(Object.keys(ALL_OWNERS));
-  ALL_MEETINGS = (d.results || []).filter(m => {
-    const ownerId = String(m.properties?.hubspot_owner_id || '');
-    return chileIds.has(ownerId);
-  });
+  ALL_MEETINGS = d.results || [];
 }
 
 function sleep(ms) {
@@ -1177,15 +1189,15 @@ function renderRepDetail(id) {
       <div class="ae-avatar-lg av-${idx}" style="width:48px;height:48px;font-size:17px;margin-bottom:0">${initials(name)}</div>
       <div>
         <div class="rep-header-name">${name}</div>
-        <div style="font-size:13px;color:var(--text-secondary)">Account Executive · Chile</div>
+        <div style="font-size:13px;color:var(--text-secondary)">${ownerRole(id)} · Chile</div>
       </div>
     </div>
 
     <div class="kpi-row">
-      <div class="kpi-card">
+      <div class="kpi-card" onclick="toggleWeekDeals()" style="cursor:pointer" title="Ver deals">
         <div class="kpi-label">Deals esta semana</div>
         <div class="kpi-value">${thisWeekDeals.length}</div>
-        <div class="kpi-sub">nuevos</div>
+        <div class="kpi-sub">nuevos · click para ver</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Ganados esta semana</div>
@@ -1201,6 +1213,32 @@ function renderRepDetail(id) {
         <div class="kpi-label">Pipeline activo</div>
         <div class="kpi-value">${fmtCLP(pipeline)}</div>
         <div class="kpi-sub">${activeDeals.length} negocios</div>
+      </div>
+    </div>
+
+    <div id="week-deals-panel" style="display:none;margin-bottom:14px">
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-head-left">
+            <span class="section-title">Deals creados esta semana</span>
+            <span class="section-count">${thisWeekDeals.length}</span>
+          </div>
+          <button onclick="toggleWeekDeals()" style="font-size:11px;color:var(--text-muted);background:none;border:none;cursor:pointer">✕ cerrar</button>
+        </div>
+        ${thisWeekDeals.length === 0 ? '<div class="empty">Sin deals nuevos esta semana</div>' :
+          `<div style="overflow-x:auto"><table class="data-table">
+            <thead><tr><th>Empresa</th><th>Etapa</th><th>Valor CLP</th><th>Cierre est.</th></tr></thead>
+            <tbody>
+              ${thisWeekDeals.map(d => \`
+                <tr>
+                  <td><strong>\${dealProp(d,'dealname')}</strong></td>
+                  <td>\${stageBadge(dealProp(d,'dealstage'))}</td>
+                  <td style="font-family:'DM Mono',monospace;font-size:12px">\${fmtCLP(dealProp(d,'amount'))}</td>
+                  <td style="font-size:12px;color:var(--text-muted)">\${dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—'}</td>
+                </tr>
+              \`).join('')}
+            </tbody>
+          </table></div>`}
       </div>
     </div>
 
@@ -1361,6 +1399,11 @@ function renderReuniones() {
 // ═══════════════════════════════════════════════
 //  TAB SWITCHING
 // ═══════════════════════════════════════════════
+function toggleWeekDeals() {
+  const panel = document.getElementById('week-deals-panel');
+  if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
 // Auto-load saved proxy URL
 window.addEventListener('load', () => {
   const saved = localStorage.getItem('ubits_proxy_url');

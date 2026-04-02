@@ -433,15 +433,15 @@ const CHILE_OWNER_IDS = new Set([
   '106469395',  // Pedro Tapia
   '209094997',  // Cristian Leiva
   '81608359',   // Rodrigo Ignacio Álvarez Órdenes
-  '75014810',   // Diego Ignacio Osorio Peña
-  '65635113',   // Diego Ignacio Meneses Machuca
+  '2067299844', // Diego Ignacio Osorio Peña
+  '1609253222', // Diego Ignacio Meneses Machuca
   // Mathias: agregar ID cuando esté disponible
 ]);
 
 const CHILE_HIERARCHY = [
-  { leader: '91503268',  role: 'Country Manager', reports: ['75014810'] },
+  { leader: '91503268',  role: 'Country Manager', reports: ['2067299844'] },
   { leader: '98399311',  role: 'Team Lead',        reports: ['81608359'] },
-  { leader: '106469395', role: 'Team Lead',        reports: ['209094997', '65635113'] },
+  { leader: '106469395', role: 'Team Lead',        reports: ['209094997', '1609253222'] },
 ];
 
 function normalize(str) {
@@ -518,6 +518,7 @@ function ownerColor(name) {
 }
 
 const STAGE_MAP = {
+  // Standard HubSpot
   sql: 'SQL',
   opportunity: 'Opportunity',
   qualifiedtobuy: 'Opportunity',
@@ -530,11 +531,22 @@ const STAGE_MAP = {
   decisionmakerboughtin: 'Forecast',
   perceptionanalysis: 'Upside',
   appointmentscheduled: 'SQL',
+  // Ubits Chile custom stage IDs
+  '23347888': 'SQL',
+  '2235014': 'Opportunity',
+  '2235015': 'Upside',
+  '23347889': 'Forecast',
+  'f894ab48-6e0a-4652-abf5-07987478b71a': 'SQL',
+  '8f18c08a-f9a2-471a-b57f-01a37fca6a38': 'Opportunity',
+  '24999863': 'Forecast',
+  '66247605': 'Upside',
+  '66247602': 'In',
+  '167293': 'Lost',
 };
 
 function stageLabel(s) {
   if (!s) return '—';
-  return STAGE_MAP[s.toLowerCase()] || s;
+  return STAGE_MAP[s] || STAGE_MAP[s.toLowerCase()] || s;
 }
 
 function stageBadge(s) {
@@ -679,8 +691,8 @@ async function loadOwners() {
   });
   // Forzar miembros Chile aunque no aparezcan en /owners
   const fallback = {
-    '75014810': 'Diego Osorio',
-    '65635113': 'Diego Meneses',
+    '2067299844': 'Diego Osorio',
+    '1609253222': 'Diego Meneses',
   };
   Object.entries(fallback).forEach(([id, name]) => {
     if (!ALL_OWNERS[id]) ALL_OWNERS[id] = name;
@@ -841,7 +853,7 @@ function renderEquipo() {
   // Pipeline by stage
   const stageCount = {};
   const stageVal = {};
-  ALL_DEALS.filter(d => !['closedwon','closedlost'].includes(dealProp(d,'dealstage')?.toLowerCase()))
+  ALL_DEALS.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage'))))
     .forEach(d => {
       const s = stageLabel(dealProp(d, 'dealstage'));
       stageCount[s] = (stageCount[s] || 0) + 1;
@@ -875,7 +887,7 @@ function renderEquipo() {
         <div class="kpi-icon" style="background:var(--purple-light)">💰</div>
         <div class="kpi-label">Pipeline total</div>
         <div class="kpi-value">${fmtCLP(totalPipeline)}</div>
-        <div class="kpi-sub">${ALL_DEALS.filter(d => !['closedwon','closedlost'].includes(dealProp(d,'dealstage')?.toLowerCase())).length} negocios activos</div>
+        <div class="kpi-sub">${ALL_DEALS.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage')))).length} negocios activos</div>
       </div>
     </div>
 
@@ -1132,7 +1144,7 @@ function renderRepDetail(id) {
   const { start: ns, end: ne } = weekRange(1);
 
   const myDeals = ALL_DEALS.filter(d => String(dealProp(d,'hubspot_owner_id')) === String(id));
-  const activeDeals = myDeals.filter(d => !['closedwon','closedlost'].includes(dealProp(d,'dealstage')?.toLowerCase()));
+  const activeDeals = myDeals.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage'))));
   const wonDeals = myDeals.filter(d => {
     const s = dealProp(d,'dealstage')?.toLowerCase();
     const mod = new Date(dealProp(d,'hs_lastmodifieddate') || dealProp(d,'closedate'));

@@ -526,7 +526,11 @@ function getYoYDeals(deals, ownerId = null) {
   const monthDay = now.toISOString().slice(5, 10); // MM-DD
 
   const isWon = d => stageLabel(dealProp(d, 'dealstage')) === 'In';
-  const matchOwner = d => !ownerId || String(dealProp(d, 'hubspot_owner_id')) === String(ownerId);
+  const matchOwner = d => {
+    const owner = String(dealProp(d, 'hubspot_owner_id'));
+    if (ownerId) return owner === String(ownerId);
+    return CHILE_OWNER_IDS.has(owner);
+  };
 
   const wonDeals = deals.filter(d => isWon(d) && matchOwner(d));
 
@@ -904,13 +908,15 @@ function renderEquipo() {
   const { start: ws, end: we } = weekRange(0);
   const thisWeekDeals = ALL_DEALS.filter(d => {
     const cd = new Date(dealProp(d, 'createdate'));
-    return cd >= ws && cd <= we;
+    const ownerId = String(dealProp(d, 'hubspot_owner_id'));
+    return cd >= ws && cd <= we && CHILE_OWNER_IDS.has(ownerId);
   });
 
   const wonDeals = ALL_DEALS.filter(d => {
     const stage = dealProp(d, 'dealstage');
     const mod = new Date(dealProp(d, 'hs_lastmodifieddate') || dealProp(d, 'closedate'));
-    return (stage === 'closedwon' || stageLabel(stage) === 'In') && mod >= ws && mod <= we;
+    const ownerId = String(dealProp(d, 'hubspot_owner_id'));
+    return stageLabel(stage) === 'In' && mod >= ws && mod <= we && CHILE_OWNER_IDS.has(ownerId);
   });
 
   const lostDeals = ALL_DEALS.filter(d => {
@@ -942,14 +948,17 @@ function renderEquipo() {
   const nextFollowups = sortByTime(nextMeetings.filter(isFollowup));
 
   const totalPipeline = ALL_DEALS
-    .filter(d => !['closedwon','closedlost'].includes(dealProp(d,'dealstage')?.toLowerCase()))
+    .filter(d => {
+      const ownerId = String(dealProp(d, 'hubspot_owner_id'));
+      return !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage'))) && CHILE_OWNER_IDS.has(ownerId);
+    })
     .reduce((s, d) => s + (parseFloat(dealProp(d, 'amount')) || 0), 0);
 
   const wonVal = wonDeals.reduce((s, d) => s + (parseFloat(dealProp(d, 'amount')) || 0), 0);
 
   // Industry distribution
   const indMap = {};
-  ALL_DEALS.forEach(d => {
+  ALL_DEALS.filter(d => CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id')))).forEach(d => {
     const ind = dealProp(d, 'industria') || dealProp(d, 'industry') || 'Sin industria';
     if (!indMap[ind]) indMap[ind] = 0;
     indMap[ind]++;
@@ -960,7 +969,10 @@ function renderEquipo() {
   // Pipeline by stage
   const stageCount = {};
   const stageVal = {};
-  ALL_DEALS.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage'))))
+  ALL_DEALS.filter(d => {
+      const ownerId = String(dealProp(d, 'hubspot_owner_id'));
+      return !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage'))) && CHILE_OWNER_IDS.has(ownerId);
+    })
     .forEach(d => {
       const s = stageLabel(dealProp(d, 'dealstage'));
       stageCount[s] = (stageCount[s] || 0) + 1;
@@ -994,7 +1006,7 @@ function renderEquipo() {
         <div class="kpi-icon" style="background:var(--purple-light)">💰</div>
         <div class="kpi-label">Pipeline total</div>
         <div class="kpi-value">${fmtCLP(totalPipeline)}</div>
-        <div class="kpi-sub">${ALL_DEALS.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage')))).length} negocios activos</div>
+        <div class="kpi-sub">${ALL_DEALS.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage'))) && CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id')))).length} negocios activos</div>
       </div>
     </div>
 

@@ -276,6 +276,11 @@ body {
 .ae-name { font-size: 13px; font-weight: 600; margin-bottom: 6px; letter-spacing: -0.1px; }
 .ae-stat-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .ae-stat-val { font-weight: 500; color: var(--text-secondary); }
+.ae-card-leader { border-color: var(--ubits-blue) !important; position: relative; }
+.ae-leader-badge { position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 600; background: var(--ubits-blue-light); color: var(--ubits-blue); padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
+.ae-group { margin-bottom: 24px; }
+.ae-group-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ae-group-role { font-size: 11px; font-weight: 600; color: var(--ubits-blue); text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* ── MEETING ROWS ── */
 .meeting-item { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); gap: 10px; transition: background 0.1s; }
@@ -415,11 +420,54 @@ body {
 let PROXY_URL = '';
 let IS_DEMO = false;
 let ALL_DEALS = [];
-let ALL_OWNERS = {};    // id -> name
+let ALL_OWNERS = {};
 let ALL_MEETINGS = [];
-let OWNER_COLOR = {};   // name -> index
+let OWNER_COLOR = {};
 let currentTab = 'equipo';
 let selectedOwner = null;
+
+const CHILE_TEAM_NAMES = [
+  'Carla Pia Reyes De Jong',
+  'Rocio Gonzalez Marticorena',
+  'Pedro Pablo Tapia Muñoz',
+  'Cristian Hernan Leiva Yanez',
+  'Diego Ignacio Meneses Machuca',
+  'Diego Ignacio Osorio Pena',
+  'Rodrigo Ignacio Alvarez Ordenes',
+  'Mathias Yamir Garcia Ocares',
+];
+
+const CHILE_HIERARCHY = [
+  { leader: 'Carla Pia Reyes De Jong', role: 'Country Manager', reports: ['Diego Ignacio Osorio Pena'] },
+  { leader: 'Rocio Gonzalez Marticorena', role: 'Team Lead', reports: ['Rodrigo Ignacio Alvarez Ordenes'] },
+  { leader: 'Pedro Pablo Tapia Munoz', role: 'Team Lead', reports: ['Cristian Hernan Leiva Yanez','Diego Ignacio Meneses Machuca','Mathias Yamir Garcia Ocares'] },
+];
+
+function normalize(str) {
+  return (str||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+
+function isChileTeam(name) {
+  const n = normalize(name);
+  return CHILE_TEAM_NAMES.some(t => {
+    const tn = normalize(t);
+    return n === tn || (n.includes(tn.split(' ')[0]) && n.includes(tn.split(' ').pop()));
+  });
+}
+
+function chileOwnerIds() {
+  return Object.entries(ALL_OWNERS)
+    .filter(([id, name]) => isChileTeam(name))
+    .map(([id]) => id);
+}
+
+function isLeader(name) {
+  return CHILE_HIERARCHY.some(g => normalize(g.leader) === normalize(name));
+}
+
+function getLeaderGroup(name) {
+  return CHILE_HIERARCHY.find(g => normalize(g.leader) === normalize(name));
+}
 
 // ═══════════════════════════════════════════════
 //  UTILS
@@ -612,18 +660,25 @@ async function loadOwners() {
   const d = await proxyGet('owners');
   ALL_OWNERS = {};
   (d.results || []).forEach(o => {
-    ALL_OWNERS[o.id] = (o.firstName + ' ' + o.lastName).trim();
+    const name = (o.firstName + ' ' + o.lastName).trim();
+    if (isChileTeam(name)) ALL_OWNERS[o.id] = name;
   });
 }
 
 async function loadDeals() {
   const d = await proxyGet('deals');
-  ALL_DEALS = d.results || [];
+  ALL_DEALS = (d.results || []).filter(deal => {
+    const ownerId = deal.properties?.hubspot_owner_id;
+    return ownerId && ALL_OWNERS[ownerId];
+  });
 }
 
 async function loadMeetings() {
   const d = await proxyGet('meetings');
-  ALL_MEETINGS = d.results || [];
+  ALL_MEETINGS = (d.results || []).filter(m => {
+    const ownerId = m.properties?.hubspot_owner_id;
+    return ownerId && ALL_OWNERS[ownerId];
+  });
 }
 
 async function loadAllData() {
@@ -975,36 +1030,55 @@ function renderVendedores() {
     return;
   }
 
-  const cards = ownerIds.map(id => {
-    const name = ALL_OWNERS[id];
-    const idx = ownerColor(name);
+  // Build id->name map for Chile only
+  const ownerMap = {};
+  ownerIds.forEach(id => ownerMap[id] = ALL_OWNERS[id]);
+
+  function aeCard(id) {
+    const name = ownerMap[id];
+    if (!name) return '';
+    const colorIdx = ownerColor(name);
     const myDeals = ALL_DEALS.filter(d => String(dealProp(d,'hubspot_owner_id')) === String(id));
-    const thisWeek = myDeals.filter(d => {
-      const cd = new Date(dealProp(d,'createdate'));
-      return cd >= ws && cd <= we;
-    });
+    const thisWeek = myDeals.filter(d => { const cd = new Date(dealProp(d,'createdate')); return cd >= ws && cd <= we; });
     const nextMtgs = ALL_MEETINGS.filter(m => {
       const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-      const d = new Date(t);
-      return String(m.properties?.hubspot_owner_id) === String(id) && d >= ns && d <= ne;
+      return String(m.properties?.hubspot_owner_id) === String(id) && new Date(t) >= ns && new Date(t) <= ne;
     });
     const pipeline = myDeals
       .filter(d => !['closedwon','closedlost'].includes(dealProp(d,'dealstage')?.toLowerCase()))
       .reduce((s, d) => s + (parseFloat(dealProp(d,'amount')) || 0), 0);
-
+    const leader = isLeader(name);
     return `
-      <div class="ae-card" onclick="selectRep('${id}')">
-        <div class="ae-avatar-lg av-${idx}">${initials(name)}</div>
-        <div class="ae-name">${name}</div>
+      <div class="ae-card${leader ? ' ae-card-leader' : ''}" onclick="selectRep('${id}')">
+        ${leader ? '<div class="ae-leader-badge">Líder</div>' : ''}
+        <div class="ae-avatar-lg av-${colorIdx}">${initials(name)}</div>
+        <div class="ae-name">${name.split(' ').slice(0,2).join(' ')}</div>
         <div class="ae-stat-row"><span>Deals esta semana</span><span class="ae-stat-val">${thisWeek.length}</span></div>
         <div class="ae-stat-row"><span>Reuniones próx.</span><span class="ae-stat-val">${nextMtgs.length}</span></div>
         <div class="ae-stat-row"><span>Pipeline</span><span class="ae-stat-val">${fmtCLP(pipeline)}</span></div>
       </div>
     `;
-  });
+  }
 
-  document.getElementById('content-vendedores').innerHTML =
-    `<div class="ae-grid">${cards.join('')}</div>`;
+  // Render grouped by hierarchy
+  const groupsHtml = CHILE_HIERARCHY.map(group => {
+    const leaderId = ownerIds.find(id => normalize(ownerMap[id]) === normalize(group.leader));
+    const reportIds = group.reports.map(rName => ownerIds.find(id => normalize(ownerMap[id]) === normalize(rName))).filter(Boolean);
+    if (!leaderId && reportIds.length === 0) return '';
+    return `
+      <div class="ae-group">
+        <div class="ae-group-header">
+          <span class="ae-group-role">${group.role}</span>
+        </div>
+        <div class="ae-grid">
+          ${leaderId ? aeCard(leaderId) : ''}
+          ${reportIds.map(id => aeCard(id)).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('content-vendedores').innerHTML = groupsHtml;
 }
 
 function selectRep(id) {

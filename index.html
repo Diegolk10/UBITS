@@ -282,6 +282,18 @@ body {
 .ae-group-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .ae-group-role { font-size: 11px; font-weight: 600; color: var(--ubits-blue); text-transform: uppercase; letter-spacing: 0.08em; }
 
+.yoy-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; box-shadow: var(--shadow-sm); margin-bottom: 14px; }
+.yoy-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 6px; }
+.yoy-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.yoy-cols { display: flex; align-items: center; gap: 16px; }
+.yoy-col { flex: 1; }
+.yoy-col-main { border-right: 1px solid var(--border); padding-right: 16px; }
+.yoy-divider { font-size: 11px; color: var(--text-muted); font-weight: 500; flex-shrink: 0; }
+.yoy-year { font-size: 11px; font-weight: 600; color: var(--ubits-blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.yoy-clp { font-size: 22px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.5px; line-height: 1.1; }
+.yoy-usd { font-size: 12px; color: var(--text-secondary); margin-top: 2px; font-family: 'DM Mono', monospace; }
+.yoy-deals { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
 /* ── MEETING ROWS ── */
 .meeting-item { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); gap: 10px; transition: background 0.1s; }
 .meeting-item:last-child { border-bottom: none; }
@@ -507,6 +519,88 @@ function fmtCLP(v) {
   return '$' + Math.round(n).toLocaleString('es-CL');
 }
 
+function getYoYDeals(deals, ownerId = null) {
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const lastYear = thisYear - 1;
+  const monthDay = now.toISOString().slice(5, 10); // MM-DD
+
+  const isWon = d => stageLabel(dealProp(d, 'dealstage')) === 'In';
+  const matchOwner = d => !ownerId || String(dealProp(d, 'hubspot_owner_id')) === String(ownerId);
+
+  const wonDeals = deals.filter(d => isWon(d) && matchOwner(d));
+
+  const thisYearDeals = wonDeals.filter(d => {
+    const cd = dealProp(d, 'closedate');
+    if (!cd) return false;
+    const date = new Date(cd);
+    return date.getFullYear() === thisYear && date.toISOString().slice(5,10) <= monthDay;
+  });
+
+  const lastYearDeals = wonDeals.filter(d => {
+    const cd = dealProp(d, 'closedate');
+    if (!cd) return false;
+    const date = new Date(cd);
+    return date.getFullYear() === lastYear && date.toISOString().slice(5,10) <= monthDay;
+  });
+
+  const sumCLP = arr => arr.reduce((s, d) => s + (parseFloat(dealProp(d,'amount')) || 0), 0);
+  const sumUSD = arr => arr.reduce((s, d) => s + (parseFloat(d.properties?.amount_in_company_currency) || 0), 0);
+
+  const thisCLP = sumCLP(thisYearDeals);
+  const lastCLP = sumCLP(lastYearDeals);
+  const thisUSD = sumUSD(thisYearDeals);
+  const lastUSD = sumUSD(lastYearDeals);
+
+  const pctChange = lastCLP > 0 ? ((thisCLP - lastCLP) / lastCLP * 100) : null;
+
+  return {
+    thisYear: { deals: thisYearDeals.length, clp: thisCLP, usd: thisUSD, year: thisYear },
+    lastYear: { deals: lastYearDeals.length, clp: lastCLP, usd: lastUSD, year: lastYear },
+    pctChange
+  };
+}
+
+function fmtUSD(v) {
+  if (!v && v !== 0) return '—';
+  const n = parseFloat(v);
+  if (isNaN(n) || n === 0) return 'US$0';
+  if (n >= 1e6) return 'US$' + (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return 'US$' + Math.round(n/1e3) + 'K';
+  return 'US$' + Math.round(n).toLocaleString();
+}
+
+function renderYoY(yoy) {
+  const arrow = yoy.pctChange === null ? '' :
+    yoy.pctChange >= 0
+      ? `<span style="color:var(--green);font-weight:500">↑ +${Math.abs(yoy.pctChange).toFixed(1)}% vs ${yoy.lastYear.year}</span>`
+      : `<span style="color:var(--red);font-weight:500">↓ ${Math.abs(yoy.pctChange).toFixed(1)}% vs ${yoy.lastYear.year}</span>`;
+
+  return `
+    <div class="yoy-card">
+      <div class="yoy-header">
+        <span class="yoy-title">ARR Ganado ${yoy.thisYear.year} <span style="font-size:11px;color:var(--text-muted)">(ene–hoy)</span></span>
+        ${arrow}
+      </div>
+      <div class="yoy-cols">
+        <div class="yoy-col yoy-col-main">
+          <div class="yoy-year">${yoy.thisYear.year}</div>
+          <div class="yoy-clp">${fmtCLP(yoy.thisYear.clp)}</div>
+          <div class="yoy-usd">${fmtUSD(yoy.thisYear.usd)}</div>
+          <div class="yoy-deals">${yoy.thisYear.deals} deals</div>
+        </div>
+        <div class="yoy-divider">vs</div>
+        <div class="yoy-col">
+          <div class="yoy-year">${yoy.lastYear.year}</div>
+          <div class="yoy-clp">${fmtCLP(yoy.lastYear.clp)}</div>
+          <div class="yoy-usd">${fmtUSD(yoy.lastYear.usd)}</div>
+          <div class="yoy-deals">${yoy.lastYear.deals} deals</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function fmtDate(ts) {
   if (!ts) return '';
   const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
@@ -536,27 +630,28 @@ const STAGE_MAP = {
   // Standard HubSpot
   sql: 'SQL',
   opportunity: 'Opportunity',
-  qualifiedtobuy: 'Opportunity',
+  qualifiedtobuy: 'SQL',
   upside: 'Upside',
   forecast: 'Forecast',
   closedwon: 'In',
   closedlost: 'Lost',
-  contractsent: 'Forecast',
+  contractsent: 'In',
   presentationscheduled: 'Opportunity',
   decisionmakerboughtin: 'Forecast',
   perceptionanalysis: 'Upside',
   appointmentscheduled: 'SQL',
-  // Ubits Chile custom stage IDs
+  // Ubits Chile custom stage IDs (confirmed from HubSpot)
+  '9860635':  'Opportunity',
   '23347888': 'SQL',
-  '2235014': 'Opportunity',
-  '2235015': 'Upside',
+  '2235014':  'Opportunity',
+  '2235015':  'Upside',
   '23347889': 'Forecast',
   'f894ab48-6e0a-4652-abf5-07987478b71a': 'SQL',
   '8f18c08a-f9a2-471a-b57f-01a37fca6a38': 'Opportunity',
   '24999863': 'Forecast',
   '66247605': 'Upside',
   '66247602': 'In',
-  '167293': 'Lost',
+  '167293':   'Lost',
 };
 
 function stageLabel(s) {
@@ -903,6 +998,8 @@ function renderEquipo() {
       </div>
     </div>
 
+    ${renderYoY(getYoYDeals(ALL_DEALS))}
+
     <div class="full-col">
       <div class="section-card">
         <div class="section-head">
@@ -1215,6 +1312,8 @@ function renderRepDetail(id) {
         <div class="kpi-sub">${activeDeals.length} negocios</div>
       </div>
     </div>
+
+    ${renderYoY(getYoYDeals(ALL_DEALS, id))}
 
     <div id="week-deals-panel" style="display:none;margin-bottom:14px">
       <div class="section-card">

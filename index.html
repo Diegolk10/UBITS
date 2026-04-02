@@ -655,21 +655,31 @@ async function loadOwners() {
       ALL_OWNERS[o.id] = (o.firstName + ' ' + o.lastName).trim();
     }
   });
+  // Forzar miembros Chile aunque no aparezcan en /owners
+  const fallback = {
+    '75014810': 'Diego Osorio',
+    '65635113': 'Diego Meneses',
+  };
+  Object.entries(fallback).forEach(([id, name]) => {
+    if (!ALL_OWNERS[id]) ALL_OWNERS[id] = name;
+  });
 }
 
 async function loadDeals() {
   const d = await proxyGet('deals');
+  const chileIds = new Set(Object.keys(ALL_OWNERS));
   ALL_DEALS = (d.results || []).filter(deal => {
-    const ownerId = deal.properties?.hubspot_owner_id;
-    return ownerId && ALL_OWNERS[ownerId];
+    const ownerId = String(deal.properties?.hubspot_owner_id || '');
+    return chileIds.has(ownerId);
   });
 }
 
 async function loadMeetings() {
   const d = await proxyGet('meetings');
+  const chileIds = new Set(Object.keys(ALL_OWNERS));
   ALL_MEETINGS = (d.results || []).filter(m => {
-    const ownerId = m.properties?.hubspot_owner_id;
-    return ownerId && ALL_OWNERS[ownerId];
+    const ownerId = String(m.properties?.hubspot_owner_id || '');
+    return chileIds.has(ownerId);
   });
 }
 

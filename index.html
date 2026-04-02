@@ -667,10 +667,9 @@ async function loadOwners() {
 
 async function loadDeals() {
   const d = await proxyGet('deals');
-  const chileIds = new Set(Object.keys(ALL_OWNERS));
   ALL_DEALS = (d.results || []).filter(deal => {
-    const ownerId = String(deal.properties?.hubspot_owner_id || '');
-    return chileIds.has(ownerId);
+    const currency = deal.properties?.deal_currency_code || '';
+    return currency === 'CLP';
   });
 }
 

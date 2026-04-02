@@ -926,16 +926,21 @@ function renderEquipo() {
   });
 
   const { start: ns, end: ne } = weekRange(1);
+  const parseMeetingTime = m => {
+    const raw = m.properties?.hs_meeting_start_time;
+    if (!raw) return null;
+    const t = new Date(isNaN(raw) ? raw : parseInt(raw));
+    return isNaN(t.getTime()) ? null : t;
+  };
+
   const nextMeetings = ALL_MEETINGS.filter(m => {
-    const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-    const d = new Date(t);
-    return d >= ns && d <= ne;
+    const d = parseMeetingTime(m);
+    return d && d >= ns && d <= ne;
   });
 
   const thisMeetings = ALL_MEETINGS.filter(m => {
-    const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-    const d = new Date(t);
-    return d >= ws && d <= we;
+    const d = parseMeetingTime(m);
+    return d && d >= ws && d <= we;
   });
 
   const isDemo = m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Demo';
@@ -958,10 +963,13 @@ function renderEquipo() {
 
   // Industry distribution
   const indMap = {};
-  ALL_DEALS.filter(d => CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id')))).forEach(d => {
-    const ind = dealProp(d, 'industria') || dealProp(d, 'industry') || 'Sin industria';
-    if (!indMap[ind]) indMap[ind] = 0;
-    indMap[ind]++;
+  ALL_DEALS.filter(d => {
+    const ownerId = String(dealProp(d,'hubspot_owner_id'));
+    const ind = dealProp(d,'industria');
+    return CHILE_OWNER_IDS.has(ownerId) && ind && ind.trim() !== '';
+  }).forEach(d => {
+    const ind = dealProp(d,'industria').trim();
+    indMap[ind] = (indMap[ind] || 0) + 1;
   });
   const indSorted = Object.entries(indMap).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const indMax = indSorted[0]?.[1] || 1;
@@ -1151,7 +1159,8 @@ function renderEquipo() {
 }
 
 function meetingRow(m) {
-  const ts = parseInt(m.properties?.hs_meeting_start_time || 0);
+  const rawTs = m.properties?.hs_meeting_start_time;
+  const ts = rawTs ? (isNaN(rawTs) ? new Date(rawTs).getTime() : parseInt(rawTs)) : 0;
   const { day, mon } = fmtDateShort(ts);
   const title = m.properties?.hs_meeting_title || 'Reunión';
   const type = m.properties?.hs_activity_type;
@@ -1216,7 +1225,7 @@ function renderVendedores() {
       <div class="ae-card${leader ? ' ae-card-leader' : ''}" onclick="selectRep('${id}')">
         ${leader ? '<div class="ae-leader-badge">Líder</div>' : ''}
         <div class="ae-avatar-lg av-${colorIdx}">${initials(name)}</div>
-        <div class="ae-name">${name.split(' ').slice(0,2).join(' ')}</div>
+        <div class="ae-name">${name.split(' ').slice(0,1).join(' ')} ${name.split(' ').slice(-1).join(' ')}</div>
         <div class="ae-stat-row"><span>Deals esta semana</span><span class="ae-stat-val">${thisWeek.length}</span></div>
         <div class="ae-stat-row"><span>Reuniones próx.</span><span class="ae-stat-val">${nextMtgs.length}</span></div>
         <div class="ae-stat-row"><span>Pipeline</span><span class="ae-stat-val">${fmtCLP(pipeline)}</span></div>
@@ -1418,23 +1427,26 @@ function renderReuniones() {
   const { start: ns, end: ne } = weekRange(1);
   const { start: ps, end: pe } = weekRange(-1);
 
+  const getMeetingTime = m => {
+    const raw = m.properties?.hs_meeting_start_time;
+    if (!raw) return 0;
+    return isNaN(raw) ? new Date(raw).getTime() : parseInt(raw);
+  };
+
   const past = ALL_MEETINGS.filter(m => {
-    const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-    const d = new Date(t);
+    const d = new Date(getMeetingTime(m));
     return d >= ps && d <= pe;
-  }).sort((a,b) => parseInt(a.properties?.hs_meeting_start_time||0) - parseInt(b.properties?.hs_meeting_start_time||0));
+  }).sort((a,b) => getMeetingTime(a) - getMeetingTime(b));
 
   const current = ALL_MEETINGS.filter(m => {
-    const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-    const d = new Date(t);
+    const d = new Date(getMeetingTime(m));
     return d >= ws && d <= we;
-  }).sort((a,b) => parseInt(a.properties?.hs_meeting_start_time||0) - parseInt(b.properties?.hs_meeting_start_time||0));
+  }).sort((a,b) => getMeetingTime(a) - getMeetingTime(b));
 
   const next = ALL_MEETINGS.filter(m => {
-    const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-    const d = new Date(t);
+    const d = new Date(getMeetingTime(m));
     return d >= ns && d <= ne;
-  }).sort((a,b) => parseInt(a.properties?.hs_meeting_start_time||0) - parseInt(b.properties?.hs_meeting_start_time||0));
+  }).sort((a,b) => getMeetingTime(a) - getMeetingTime(b));
 
   const meetingsTable = (list) => {
     if (list.length === 0) return '<div class="empty">Sin reuniones</div>';

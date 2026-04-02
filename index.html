@@ -578,7 +578,8 @@ function dealProp(deal, key) {
 //  CONNECT
 // ═══════════════════════════════════════════════
 async function connectProxy() {
-  const url = document.getElementById('proxy-url-input').value.trim();
+  const inputEl = document.getElementById('proxy-url-input');
+  const url = inputEl ? inputEl.value.trim() : PROXY_URL;
   if (!url) return;
   PROXY_URL = url.replace(/\/$/, '');
   const btn = document.getElementById('connect-btn');
@@ -608,7 +609,7 @@ async function connectHS() { await connectProxy(); }
 
 function disconnect() {
   PROXY_URL = '';
-  localStorage.removeItem('ubits_proxy_url');
+  try { localStorage.removeItem('ubits_proxy_url'); } catch(e) {}
   IS_DEMO = false;
   ALL_DEALS = [];
   ALL_OWNERS = {};
@@ -703,9 +704,16 @@ async function loadMeetings() {
   });
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function loadAllData() {
   await loadOwners();
-  await Promise.all([loadDeals(), loadMeetings()]);
+  await sleep(500);
+  await loadDeals();
+  await sleep(500);
+  await loadMeetings();
 }
 
 // ═══════════════════════════════════════════════

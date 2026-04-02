@@ -1074,11 +1074,10 @@ function renderVendedores() {
   // Any Chile member not in hierarchy groups
   const groupedIds = new Set(CHILE_HIERARCHY.flatMap(g => [g.leader, ...g.reports]));
   const ungrouped = ownerIds.filter(id => !groupedIds.has(String(id)));
-  const ungroupedHtml = ungrouped.length > 0 ? \`
-    <div class="ae-group">
-      <div class="ae-group-header"><span class="ae-group-role">Equipo</span></div>
-      <div class="ae-grid">\${ungrouped.map(id => aeCard(id)).join('')}</div>
-    </div>\` : '';
+  const ungroupedHtml = ungrouped.length > 0 ?
+    '<div class="ae-group"><div class="ae-group-header"><span class="ae-group-role">Equipo</span></div><div class="ae-grid">' +
+    ungrouped.map(id => aeCard(id)).join('') +
+    '</div></div>' : '';
 
   document.getElementById('content-vendedores').innerHTML = groupsHtml + ungroupedHtml;
 }

@@ -1325,19 +1325,17 @@ function renderRepDetail(id) {
           <button onclick="toggleWeekDeals()" style="font-size:11px;color:var(--text-muted);background:none;border:none;cursor:pointer">✕ cerrar</button>
         </div>
         ${thisWeekDeals.length === 0 ? '<div class="empty">Sin deals nuevos esta semana</div>' :
-          `<div style="overflow-x:auto"><table class="data-table">
-            <thead><tr><th>Empresa</th><th>Etapa</th><th>Valor CLP</th><th>Cierre est.</th></tr></thead>
-            <tbody>
-              ${thisWeekDeals.map(d => \`
-                <tr>
-                  <td><strong>\${dealProp(d,'dealname')}</strong></td>
-                  <td>\${stageBadge(dealProp(d,'dealstage'))}</td>
-                  <td style="font-family:'DM Mono',monospace;font-size:12px">\${fmtCLP(dealProp(d,'amount'))}</td>
-                  <td style="font-size:12px;color:var(--text-muted)">\${dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—'}</td>
-                </tr>
-              \`).join('')}
-            </tbody>
-          </table></div>`}
+          '<div style="overflow-x:auto"><table class="data-table">' +
+          '<thead><tr><th>Empresa</th><th>Etapa</th><th>Valor CLP</th><th>Cierre est.</th></tr></thead><tbody>' +
+          thisWeekDeals.map(d =>
+            '<tr>' +
+            '<td><strong>' + dealProp(d,'dealname') + '</strong></td>' +
+            '<td>' + stageBadge(dealProp(d,'dealstage')) + '</td>' +
+            '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
+            '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—') + '</td>' +
+            '</tr>'
+          ).join('') +
+          '</tbody></table></div>'}
       </div>
     </div>
 

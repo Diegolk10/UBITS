@@ -640,7 +640,11 @@ async function refreshData() {
 //  HUBSPOT FETCH
 // ═══════════════════════════════════════════════
 async function proxyGet(path) {
-  const r = await fetch(PROXY_URL + '?path=' + path);
+  const r = await fetch(PROXY_URL + '?path=' + path, {
+    redirect: 'follow',
+    mode: 'cors',
+    credentials: 'omit'
+  });
   if (!r.ok) throw new Error('Proxy error ' + r.status);
   const data = await r.json();
   if (data.error) throw new Error(data.error);
@@ -1329,7 +1333,15 @@ window.addEventListener('load', () => {
     PROXY_URL = saved;
     IS_DEMO = false;
     showApp();
-    loadAllData().then(renderAll).catch(err => {
+    const timeout = setTimeout(() => {
+      localStorage.removeItem('ubits_proxy_url');
+      disconnect();
+    }, 30000);
+    loadAllData().then(() => {
+      clearTimeout(timeout);
+      renderAll();
+    }).catch(err => {
+      clearTimeout(timeout);
       localStorage.removeItem('ubits_proxy_url');
       disconnect();
     });

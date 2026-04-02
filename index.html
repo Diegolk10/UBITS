@@ -674,7 +674,8 @@ async function loadMeetings() {
 }
 
 async function loadAllData() {
-  await Promise.all([loadOwners(), loadDeals(), loadMeetings()]);
+  await loadOwners();
+  await Promise.all([loadDeals(), loadMeetings()]);
 }
 
 // ═══════════════════════════════════════════════

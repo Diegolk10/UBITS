@@ -710,6 +710,25 @@ function stageLabel(s) {
   return STAGE_MAP[s] || STAGE_MAP[s.toLowerCase()] || s;
 }
 
+const MACRO_INDUSTRY_MAP = {
+  'Transporte y logística': ['LOGISTICS_AND_SUPPLY_CHAIN','TRANSPORTATION_TRUCKING_RAILROAD','MARITIME','AIRLINES_AVIATION','Transporte'],
+  'Retail': ['RETAIL','WHOLESALE','CONSUMER_GOODS','APPAREL_FASHION','CONSUMER_ELECTRONICS','RESTAURANTS','HOSPITALITY','LEISURE_TRAVEL_TOURISM'],
+  'Compañías de servicios': ['INFORMATION_TECHNOLOGY_AND_SERVICES','COMPUTER_SOFTWARE','TELECOMMUNICATIONS','FINANCIAL_SERVICES','BANKING','INSURANCE','SECURITY_AND_INVESTIGATIONS','HUMAN_RESOURCES','PROFESSIONAL_TRAINING_COACHING','FACILITIES_SERVICES','LEGAL_SERVICES','BUSINESS_SUPPLIES_AND_EQUIPMENT','WIRELESS','BROADCAST_MEDIA','ENTERTAINMENT','INVESTMENT_MANAGEMENT','INVESTMENT_BANKING','COMMERCIAL_REAL_ESTATE','REAL_ESTATE'],
+  'Agroindustria': ['FOOD_BEVERAGES','FOOD_PRODUCTION','FARMING','WINE_AND_SPIRITS','Agroindustry','PAPER_FOREST_PRODUCTS','PACKAGING_AND_CONTAINERS'],
+};
+
+function getMacroIndustry(ind) {
+  if (!ind) return 'Otras industrias';
+  for (const [macro, codes] of Object.entries(MACRO_INDUSTRY_MAP)) {
+    if (codes.includes(ind)) return macro;
+  }
+  return 'Otras industrias';
+}
+
+function dealIndustry(deal) {
+  return getMacroIndustry(dealProp(deal, 'industria'));
+}
+
 function stageBadge(s) {
   const l = stageLabel(s);
   const cls = { 'SQL': 'badge-sql', 'Opportunity': 'badge-opportunity', 'Upside': 'badge-upside', 'Forecast': 'badge-forecast', 'In': 'badge-in', 'Lost': 'badge-lost' };
@@ -1070,18 +1089,49 @@ function renderEquipo() {
         </div>
         <div class="pipeline-row">
           ${stages.map(s => `
-            <div class="pipeline-chip">
+            <div class="pipeline-chip" onclick="toggleStageDeals('stage-${s.toLowerCase()}')" style="cursor:pointer" title="Ver deals">
               <div class="pipeline-chip-label" style="color:${stageColors[s]}">${s}</div>
               <div class="pipeline-chip-count">${stageCount[s] || 0}</div>
               <div class="pipeline-chip-val">${fmtCLP(stageVal[s] || 0)}</div>
             </div>
           `).join('')}
-          <div class="pipeline-chip">
+          <div class="pipeline-chip" onclick="toggleStageDeals('stage-lost')" style="cursor:pointer" title="Ver deals perdidos esta semana">
             <div class="pipeline-chip-label" style="color:var(--red)">Lost</div>
             <div class="pipeline-chip-count">${lostDeals.length}</div>
             <div class="pipeline-chip-val">esta semana</div>
           </div>
         </div>
+        ${stages.map(s => {
+          const stageDeals = ALL_DEALS.filter(d => stageLabel(dealProp(d,'dealstage')) === s && CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id'))));
+          return '<div id="stage-' + s.toLowerCase() + '" style="display:none;margin:0 14px 14px">' +
+            '<table class="data-table" style="border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden">' +
+            '<thead><tr><th>Empresa</th><th>AE</th><th>Valor CLP</th><th>Macro industria</th><th>Cierre est.</th></tr></thead>' +
+            '<tbody>' +
+            stageDeals.map(d =>
+              '<tr>' +
+              '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
+              '<td>' + ownerChip(ownerName(dealProp(d,'hubspot_owner_id'))) + '</td>' +
+              '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
+              '<td style="font-size:12px;color:var(--text-secondary)">' + dealIndustry(d) + '</td>' +
+              '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'2-digit'}) : '—') + '</td>' +
+              '</tr>'
+            ).join('') +
+            '</tbody></table></div>';
+        }).join('')}
+        <div id="stage-lost" style="display:none;margin:0 14px 14px">
+          ${lostDeals.length === 0 ? '<div class="empty">Sin deals perdidos esta semana</div>' :
+            '<table class="data-table" style="border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden">' +
+            '<thead><tr><th>Empresa</th><th>AE</th><th>Valor CLP</th><th>Macro industria</th></tr></thead>' +
+            '<tbody>' +
+            lostDeals.map(d =>
+              '<tr>' +
+              '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
+              '<td>' + ownerChip(ownerName(dealProp(d,'hubspot_owner_id'))) + '</td>' +
+              '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
+              '<td style="font-size:12px;color:var(--text-secondary)">' + dealIndustry(d) + '</td>' +
+              '</tr>'
+            ).join('') +
+            '</tbody></table></div>'}
       </div>
     </div>
 
@@ -1181,16 +1231,27 @@ function renderEquipo() {
         <div class="section-head">
           <div class="section-head-left">
             <div class="section-icon" style="background:var(--surface2)">🏭</div>
-            <span class="section-title">Industrias</span>
+            <span class="section-title">Macro industria · GTM</span>
           </div>
         </div>
-        ${indSorted.map(([ind, cnt]) => `
-          <div class="ind-row">
-            <div class="ind-label">${ind}</div>
-            <div class="ind-bar-track"><div class="ind-bar-fill" style="width:${Math.round(cnt/indMax*100)}%"></div></div>
-            <div class="ind-pct">${cnt}</div>
-          </div>
-        `).join('')}
+        ${(() => {
+          const gtmMap = {};
+          ALL_DEALS.filter(d => CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id')))).forEach(d => {
+            const macro = dealIndustry(d);
+            gtmMap[macro] = (gtmMap[macro]||0) + 1;
+          });
+          const gtmTotal = Object.values(gtmMap).reduce((s,v)=>s+v,0) || 1;
+          const gtmColors = {'Transporte y logística':'#185FA5','Retail':'#1D9E75','Compañías de servicios':'#534AB7','Agroindustria':'#854F0B','Otras industrias':'#888780'};
+          return Object.entries(gtmMap).sort((a,b)=>b[1]-a[1]).map(([macro,cnt]) => {
+            const pct = Math.round(cnt/gtmTotal*100);
+            const color = gtmColors[macro] || '#888780';
+            return '<div class="ind-row">' +
+              '<div class="ind-label" style="color:' + color + ';font-weight:500">' + macro + '</div>' +
+              '<div class="ind-bar-track"><div class="ind-bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+              '<div class="ind-pct" style="color:' + color + '">' + pct + '%</div>' +
+              '</div>';
+          }).join('');
+        })()}
       </div>
     </div>
   `;
@@ -1449,7 +1510,7 @@ function renderRepDetail(id) {
             '<td>' + stageBadge(dealProp(d,'dealstage')) + '</td>' +
             '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
             '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'licencias_vendidas')||'—') + '</td>' +
-            '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'industria')||'—') + '</td>' +
+            '<td style="font-size:12px;color:var(--text-secondary)">' + dealIndustry(d) + '</td>' +
             '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—') + '</td>' +
             '</tr>'
           ).join('') +
@@ -1520,7 +1581,7 @@ function renderRepDetail(id) {
             '<tr>' +
             '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
             '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
-            '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'industria')||'—') + '</td>' +
+            '<td style="font-size:12px;color:var(--text-secondary)">' + dealIndustry(d) + '</td>' +
             '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—') + '</td>' +
             '</tr>'
           ).join('') +
@@ -1852,6 +1913,14 @@ function focusBadge(demos, followups) {
 function toggleWeekDeals() {
   const panel = document.getElementById('week-deals-panel');
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleStageDeals(id) {
+  const all = ['stage-sql','stage-opportunity','stage-upside','stage-forecast','stage-lost'];
+  const isOpen = document.getElementById(id)?.style.display !== 'none';
+  all.forEach(sid => { const el = document.getElementById(sid); if(el) el.style.display = 'none'; });
+  const el = document.getElementById(id);
+  if (el && !isOpen) el.style.display = 'block';
 }
 
 function togglePipelinePanel() {

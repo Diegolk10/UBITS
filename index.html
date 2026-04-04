@@ -417,7 +417,7 @@ body {
 
   <div class="nav-tabs">
     <button class="nav-tab active" id="tab-equipo" onclick="switchTab('equipo')">Equipo</button>
-    <button class="nav-tab" id="tab-vendedores" onclick="switchTab('vendedores')">Por AE</button>
+    <button class="nav-tab" id="tab-vendedores" onclick="switchTab('vendedores')">Métricas personales</button>
     <button class="nav-tab" id="tab-reuniones" onclick="switchTab('reuniones')">Reuniones</button>
   </div>
 
@@ -1346,26 +1346,30 @@ function renderRepDetail(id) {
 
   const myDeals = ALL_DEALS.filter(d => String(dealProp(d,'hubspot_owner_id')) === String(id));
   const activeDeals = myDeals.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage'))));
+  const repYear = new Date().getFullYear();
   const wonDeals = myDeals.filter(d => {
     const closedate = dealProp(d,'closedate');
     if (!closedate) return false;
     const closed = new Date(closedate);
-    return stageLabel(dealProp(d,'dealstage')) === 'In' && closed >= ws && closed <= we;
+    return stageLabel(dealProp(d,'dealstage')) === 'In' && closed.getFullYear() === repYear;
   });
   const thisWeekDeals = myDeals.filter(d => {
     const cd = new Date(dealProp(d,'createdate'));
     return cd >= ws && cd <= we;
   });
 
+  const getRepMeetingTime = m => {
+    const raw = m.properties?.hs_meeting_start_time;
+    if (!raw) return 0;
+    return isNaN(raw) ? new Date(raw).getTime() : parseInt(raw);
+  };
   const myMeetings = ALL_MEETINGS.filter(m => String(m.properties?.hubspot_owner_id) === String(id));
   const nextMtgs = myMeetings.filter(m => {
-    const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-    const d = new Date(t);
+    const d = new Date(getRepMeetingTime(m));
     return d >= ns && d <= ne;
-  }).sort((a,b) => parseInt(a.properties?.hs_meeting_start_time||0) - parseInt(b.properties?.hs_meeting_start_time||0));
+  }).sort((a,b) => getRepMeetingTime(a) - getRepMeetingTime(b));
   const thisMtgs = myMeetings.filter(m => {
-    const t = parseInt(m.properties?.hs_meeting_start_time || 0);
-    const d = new Date(t);
+    const d = new Date(getRepMeetingTime(m));
     return d >= ws && d <= we;
   });
 
@@ -1390,14 +1394,14 @@ function renderRepDetail(id) {
         <div class="kpi-sub">nuevos · click para ver</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Ganados esta semana</div>
+        <div class="kpi-label">Ganados ${new Date().getFullYear()}</div>
         <div class="kpi-value">${wonDeals.length}</div>
         <div class="kpi-sub">${fmtCLP(wonDeals.reduce((s,d)=>s+(parseFloat(dealProp(d,'amount'))||0),0))}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Reuniones próx. sem.</div>
         <div class="kpi-value">${nextMtgs.length}</div>
-        <div class="kpi-sub">${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos</div>
+        <div class="kpi-sub">${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos · ${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length} follow-ups</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Pipeline activo</div>
@@ -1433,26 +1437,64 @@ function renderRepDetail(id) {
       </div>
     </div>
 
-    <div class="two-col">
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Reuniones próxima semana</span>
-            <span class="section-count">${nextMtgs.length}</span>
-          </div>
-        </div>
-        ${nextMtgs.length === 0 ? '<div class="empty">Sin reuniones agendadas</div>' :
-          nextMtgs.map(m => meetingRow(m)).join('')}
+    <div style="margin-bottom:6px">
+      <div style="font-size:11px;font-weight:600;color:var(--ubits-blue);text-transform:uppercase;letter-spacing:0.08em;padding:4px 0 8px;display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--purple)"></span>
+        Reuniones Demo
       </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Reuniones esta semana</span>
-            <span class="section-count">${thisMtgs.length}</span>
+      <div class="two-col">
+        <div class="section-card">
+          <div class="section-head">
+            <div class="section-head-left">
+              <span class="section-title">Demo · esta semana</span>
+              <span class="section-count">${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length}</span>
+            </div>
           </div>
+          ${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length === 0
+            ? '<div class="empty">Sin demos esta semana</div>'
+            : thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').map(m=>meetingRow(m)).join('')}
         </div>
-        ${thisMtgs.length === 0 ? '<div class="empty">Sin reuniones esta semana</div>' :
-          thisMtgs.map(m => meetingRow(m)).join('')}
+        <div class="section-card">
+          <div class="section-head">
+            <div class="section-head-left">
+              <span class="section-title">Demo · próxima semana</span>
+              <span class="section-count">${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length}</span>
+            </div>
+          </div>
+          ${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length === 0
+            ? '<div class="empty">Sin demos agendadas</div>'
+            : nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').map(m=>meetingRow(m)).join('')}
+        </div>
+      </div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--ubits-blue);text-transform:uppercase;letter-spacing:0.08em;padding:4px 0 8px;display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--blue)"></span>
+        Reuniones Follow-up
+      </div>
+      <div class="two-col">
+        <div class="section-card">
+          <div class="section-head">
+            <div class="section-head-left">
+              <span class="section-title">Follow-up · esta semana</span>
+              <span class="section-count">${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length}</span>
+            </div>
+          </div>
+          ${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length === 0
+            ? '<div class="empty">Sin follow-ups esta semana</div>'
+            : thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').map(m=>meetingRow(m)).join('')}
+        </div>
+        <div class="section-card">
+          <div class="section-head">
+            <div class="section-head-left">
+              <span class="section-title">Follow-up · próxima semana</span>
+              <span class="section-count">${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length}</span>
+            </div>
+          </div>
+          ${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length === 0
+            ? '<div class="empty">Sin follow-ups agendados</div>'
+            : nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').map(m=>meetingRow(m)).join('')}
+        </div>
       </div>
     </div>
 

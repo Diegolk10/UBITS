@@ -268,7 +268,7 @@ body {
 .av-4 { background: var(--teal-light); color: var(--teal); }
 
 /* ── AE CARDS ── */
-.ae-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.ae-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .ae-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; cursor: pointer; transition: all 0.15s; box-shadow: var(--shadow-sm); min-width: 0; }
 .ae-card:hover { border-color: var(--ubits-blue); transform: translateY(-1px); box-shadow: var(--shadow-md); }
 .ae-card.selected { border-color: var(--ubits-blue); border-width: 2px; }
@@ -376,33 +376,7 @@ body {
 <body>
 
 <!-- ══ SETUP SCREEN ══ -->
-<div id="setup-screen">
-  <div class="setup-wrap">
-    <div class="setup-logo">
-      <img src="data:image/png;base64,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" alt="Ubits" />
-      <div class="setup-logo-text">
-        <h1>Ubits Chile</h1>
-        <p>Dashboard Comercial · Reunión Lunes</p>
-      </div>
-    </div>
-    <div class="setup-card">
-      <h2>Acceder al dashboard</h2>
-      <p>Ingresa la URL del proxy para conectarte a los datos del equipo en tiempo real.</p>
-      <label class="field-label">URL del Proxy</label>
-      <input type="text" class="api-input" id="proxy-url-input"
-        placeholder="https://script.google.com/macros/s/XXXX/exec"
-        autocomplete="off" onkeydown="if(event.key==='Enter')connectProxy()" />
-      <div class="input-hint">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#A09D97" stroke-width="1.2"/><path d="M8 7v5M8 5v.5" stroke="#A09D97" stroke-width="1.4" stroke-linecap="round"/></svg>
-        La URL se guarda en tu navegador — no tendrás que ingresarla de nuevo.
-      </div>
-      <div class="error-msg" id="setup-error"></div>
-      <button class="connect-btn" id="connect-btn" onclick="connectProxy()">Conectar →</button>
-      <div class="setup-divider">o</div>
-      <button class="demo-btn" onclick="loadDemoMode()">Ver demo con datos ficticios</button>
-    </div>
-  </div>
-</div>
+<div id="setup-screen" style="display:none"></div>
 
 <!-- ══ APP ══ -->
 <div id="app">
@@ -807,18 +781,7 @@ async function connectProxy() {
 async function connectHS() { await connectProxy(); }
 
 function disconnect() {
-  PROXY_URL = '';
-  try { localStorage.removeItem('ubits_proxy_url'); } catch(e) {}
-  IS_DEMO = false;
-  ALL_DEALS = [];
-  ALL_OWNERS = {};
-  ALL_MEETINGS = [];
-  OWNER_COLOR = {};
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('setup-screen').style.display = 'flex';
-  document.getElementById('api-key-input').value = '';
-  document.getElementById('connect-btn').disabled = false;
-  document.getElementById('connect-btn').textContent = 'Conectar →';
+  location.reload();
 }
 
 function showApp() {
@@ -1312,14 +1275,12 @@ function renderVendedores() {
     return `
       <div class="ae-card${leader ? ' ae-card-leader' : ''}" onclick="selectRep('${id}')">
         ${leader ? '<div class="ae-leader-badge">Líder</div>' : ''}
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div class="ae-avatar-lg av-${colorIdx}" style="margin-bottom:0;flex-shrink:0">${initials(name)}</div>
-          <div style="flex-shrink:0">${focusBadge(cardNextDemos, cardNextFollowups)}</div>
-        </div>
+        <div class="ae-avatar-lg av-${colorIdx}">${initials(name)}</div>
         <div class="ae-name">${name.split(' ').slice(0,1).join(' ')} ${name.split(' ').slice(-1).join(' ')}</div>
-        <div class="ae-stat-row"><span>Deals esta semana</span><span class="ae-stat-val">${thisWeek.length}</span></div>
+        <div style="margin-bottom:10px">${focusBadge(cardNextDemos, cardNextFollowups)}</div>
+        <div class="ae-stat-row"><span>Deals sem.</span><span class="ae-stat-val">${thisWeek.length}</span></div>
         <div class="ae-stat-row"><span>Reuniones próx.</span><span class="ae-stat-val">${myNextMtgs.length}</span></div>
-        <div class="ae-stat-row"><span>Pipeline activo</span><span class="ae-stat-val">${fmtCLP(activePipeline)}</span></div>
+        <div class="ae-stat-row"><span>Pipeline</span><span class="ae-stat-val">${fmtCLP(activePipeline)}</span></div>
       </div>
     `;
   }
@@ -1684,27 +1645,20 @@ function toggleWeekDeals() {
 }
 
 // Auto-load saved proxy URL
+const HARDCODED_PROXY = 'https://script.google.com/macros/s/AKfycbwvd2JSgif2YKMKmH5FPK8C-24A7m0HG9eg9uQ_gozRxipHSPZQmzzlTfL54prnz7LMnw/exec';
+
 window.addEventListener('load', () => {
-  const saved = localStorage.getItem('ubits_proxy_url');
-  if (saved) {
-    const input = document.getElementById('proxy-url-input');
-    if (input) input.value = saved;
-    PROXY_URL = saved;
-    IS_DEMO = false;
-    showApp();
-    const timeout = setTimeout(() => {
-      localStorage.removeItem('ubits_proxy_url');
-      disconnect();
-    }, 30000);
-    loadAllData().then(() => {
-      clearTimeout(timeout);
-      renderAll();
-    }).catch(err => {
-      clearTimeout(timeout);
-      localStorage.removeItem('ubits_proxy_url');
-      disconnect();
-    });
-  }
+  PROXY_URL = HARDCODED_PROXY;
+  IS_DEMO = false;
+  showApp();
+  loadAllData().then(renderAll).catch(err => {
+    console.error('Error cargando datos:', err);
+    document.getElementById('loading-equipo').innerHTML = 
+      '<div style="text-align:center;padding:3rem;color:var(--text-secondary)">' +
+      '<div style="font-size:14px;margin-bottom:8px">Error conectando con HubSpot</div>' +
+      '<button onclick="location.reload()" style="font-size:13px;padding:8px 16px;border:1px solid var(--border);border-radius:var(--border-radius-md);background:none;cursor:pointer">Reintentar</button>' +
+      '</div>';
+  });
 });
 
 function switchTab(tab) {

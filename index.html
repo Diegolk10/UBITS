@@ -2176,11 +2176,8 @@ function renderPresentacion() {
     return String(m.properties?.hubspot_owner_id) === String(ownerId) && d >= ws && d <= we;
   });
 
-  // BD ids only (no Sales Manager)
-  const bdIds = Object.keys(ALL_OWNERS).filter(id => {
-    const role = ownerRole(id);
-    return role === 'Business Developer' || role === 'Team Lead';
-  });
+  // Todos los miembros del equipo Chile
+  const bdIds = Object.keys(ALL_OWNERS); // REPLACED
 
   // ── GLOBAL SUMMARY SLIDE ──
   const allLastWeekDeals = ALL_DEALS.filter(d => {

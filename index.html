@@ -269,7 +269,7 @@ body {
 
 /* ── AE CARDS ── */
 .ae-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 20px; }
-.ae-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; cursor: pointer; transition: all 0.15s; box-shadow: var(--shadow-sm); }
+.ae-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; cursor: pointer; transition: all 0.15s; box-shadow: var(--shadow-sm); min-width: 0; }
 .ae-card:hover { border-color: var(--ubits-blue); transform: translateY(-1px); box-shadow: var(--shadow-md); }
 .ae-card.selected { border-color: var(--ubits-blue); border-width: 2px; }
 .ae-avatar-lg { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; margin-bottom: 10px; }
@@ -307,7 +307,8 @@ body {
 .q-deals { font-size: 11px; color: var(--text-muted); }
 @media (max-width: 640px) { .q-grid { grid-template-columns: repeat(2, 1fr); } }
 
-.focus-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 20px; letter-spacing: 0.02em; white-space: nowrap; }
+.focus-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.02em; white-space: nowrap; }
+.focus-badge-lg { font-size: 12px; padding: 5px 14px; gap: 6px; }
 .focus-generacion { background: #E1F5EE; color: #0F6E56; border: 1px solid #9FE1CB; }
 .focus-seguimiento { background: #EEEDFE; color: #534AB7; border: 1px solid #AFA9EC; }
 .focus-conversion { background: #E6F1FB; color: #185FA5; border: 1px solid #B5D4F4; }
@@ -1298,20 +1299,26 @@ function renderVendedores() {
       .reduce((s, d) => s + (parseFloat(dealProp(d,'amount')) || 0), 0);
     const leader = isLeader(id);
     const { start: nsCard, end: neCard } = weekRange(1);
-    const cardNextDemos = nextMtgs.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Demo').length;
-    const cardNextFollowups = nextMtgs.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Follow-up').length;
+    const myNextMtgs = ALL_MEETINGS.filter(m => {
+      const raw = m.properties?.hs_meeting_start_time;
+      if (!raw) return false;
+      const d = new Date(isNaN(raw) ? raw : parseInt(raw));
+      return String(m.properties?.hubspot_owner_id) === String(id) && d >= nsCard && d <= neCard;
+    });
+    const cardNextDemos = myNextMtgs.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Demo').length;
+    const cardNextFollowups = myNextMtgs.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Follow-up').length;
     const activePipeline = myDeals.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage')))).reduce((s,d) => s + (parseFloat(dealProp(d,'amount'))||0), 0);
 
     return `
       <div class="ae-card${leader ? ' ae-card-leader' : ''}" onclick="selectRep('${id}')">
         ${leader ? '<div class="ae-leader-badge">Líder</div>' : ''}
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-          <div class="ae-avatar-lg av-${colorIdx}" style="margin-bottom:0">${initials(name)}</div>
-          ${focusBadge(cardNextDemos, cardNextFollowups)}
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div class="ae-avatar-lg av-${colorIdx}" style="margin-bottom:0;flex-shrink:0">${initials(name)}</div>
+          <div style="flex-shrink:0">${focusBadge(cardNextDemos, cardNextFollowups)}</div>
         </div>
         <div class="ae-name">${name.split(' ').slice(0,1).join(' ')} ${name.split(' ').slice(-1).join(' ')}</div>
         <div class="ae-stat-row"><span>Deals esta semana</span><span class="ae-stat-val">${thisWeek.length}</span></div>
-        <div class="ae-stat-row"><span>Reuniones próx.</span><span class="ae-stat-val">${nextMtgs.length}</span></div>
+        <div class="ae-stat-row"><span>Reuniones próx.</span><span class="ae-stat-val">${myNextMtgs.length}</span></div>
         <div class="ae-stat-row"><span>Pipeline activo</span><span class="ae-stat-val">${fmtCLP(activePipeline)}</span></div>
       </div>
     `;
@@ -1400,10 +1407,16 @@ function renderRepDetail(id) {
           <div style="font-size:13px;color:var(--text-secondary)">${ownerRole(id)} · Chile</div>
         </div>
       </div>
-      ${focusBadge(
+      <span class="focus-badge focus-badge-lg ${getFocus(
         nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length,
         nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length
-      )}
+      ).cls}">${getFocus(
+        nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length,
+        nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length
+      ).icon} ${getFocus(
+        nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length,
+        nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length
+      ).label}</span>
     </div>
 
     <div class="kpi-row">

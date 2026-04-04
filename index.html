@@ -398,7 +398,7 @@ body {
   <div class="nav-tabs">
     <button class="nav-tab active" id="tab-equipo" onclick="switchTab('equipo')">Equipo</button>
     <button class="nav-tab" id="tab-vendedores" onclick="switchTab('vendedores')">Métricas personales</button>
-    <button class="nav-tab" id="tab-reuniones" onclick="switchTab('reuniones')">Reuniones</button>
+    <button class="nav-tab" id="tab-reuniones" onclick="switchTab('reuniones')">Dashboard</button>
   </div>
 
   <div class="page active" id="page-equipo">
@@ -1529,100 +1529,211 @@ function backToReps() {
   renderVendedores();
 }
 
-// ── REUNIONES PAGE ──
+// ── DASHBOARD PAGE ──
 function renderReuniones() {
   const { start: ws, end: we } = weekRange(0);
   const { start: ns, end: ne } = weekRange(1);
   const { start: ps, end: pe } = weekRange(-1);
 
-  const getMeetingTime = m => {
+  const getMTime = m => {
     const raw = m.properties?.hs_meeting_start_time;
     if (!raw) return 0;
     return isNaN(raw) ? new Date(raw).getTime() : parseInt(raw);
   };
 
-  const past = ALL_MEETINGS.filter(m => {
-    const d = new Date(getMeetingTime(m));
-    return d >= ps && d <= pe;
-  }).sort((a,b) => getMeetingTime(a) - getMeetingTime(b));
+  const chileIds = new Set(Object.keys(ALL_OWNERS));
+  const chileMtgs = ALL_MEETINGS.filter(m => chileIds.has(String(m.properties?.hubspot_owner_id)));
 
-  const current = ALL_MEETINGS.filter(m => {
-    const d = new Date(getMeetingTime(m));
-    return d >= ws && d <= we;
-  }).sort((a,b) => getMeetingTime(a) - getMeetingTime(b));
+  const thisMtgs = chileMtgs.filter(m => { const d = new Date(getMTime(m)); return d >= ws && d <= we; });
+  const nextMtgs = chileMtgs.filter(m => { const d = new Date(getMTime(m)); return d >= ns && d <= ne; }).sort((a,b) => getMTime(a)-getMTime(b));
+  const pastMtgs = chileMtgs.filter(m => { const d = new Date(getMTime(m)); return d >= ps && d <= pe; });
 
-  const next = ALL_MEETINGS.filter(m => {
-    const d = new Date(getMeetingTime(m));
-    return d >= ns && d <= ne;
-  }).sort((a,b) => getMeetingTime(a) - getMeetingTime(b));
+  // ── Type breakdown for this+next week combined
+  const allRelevant = [...thisMtgs, ...nextMtgs];
+  const demos = allRelevant.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Demo');
+  const followups = allRelevant.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Follow-up');
+  const others = allRelevant.filter(m => !['Demo','Follow-up'].includes(meetingTypeLabel(m.properties?.hs_activity_type)));
+  const total = allRelevant.length || 1;
+  const demoPct = Math.round(demos.length/total*100);
+  const followPct = Math.round(followups.length/total*100);
+  const otherPct = 100 - demoPct - followPct;
 
-  const meetingsTable = (list) => {
-    if (list.length === 0) return '<div class="empty">Sin reuniones</div>';
-    return list.map(m => {
-      const ts = parseInt(m.properties?.hs_meeting_start_time || 0);
-      const { day, mon } = fmtDateShort(ts);
-      const title = m.properties?.hs_meeting_title || 'Reunión';
-      const type = m.properties?.hs_activity_type;
-      const owner = ownerName(m.properties?.hubspot_owner_id);
-      const parts = title.split('·');
-      const company = parts.length > 1 ? parts[parts.length - 1].trim() : title;
-      return `
-        <div class="meeting-item">
-          <div class="meeting-date-block">
-            <div class="meeting-date-day">${day}</div>
-            <div class="meeting-date-mon">${mon}</div>
-          </div>
-          <div class="meeting-divider"></div>
-          <div class="meeting-info">
-            <div class="meeting-company">${company}</div>
-            <div class="meeting-sub">${owner}</div>
-          </div>
-          <div class="meeting-right">
-            ${meetingBadge(type)}
-          </div>
-        </div>
-      `;
-    }).join('');
-  };
+  // ── Meetings per AE next week
+  const aeNextCount = {};
+  nextMtgs.forEach(m => {
+    const owner = ownerName(m.properties?.hubspot_owner_id);
+    const first = owner.split(' ')[0];
+    aeNextCount[first] = (aeNextCount[first]||0) + 1;
+  });
 
-  const html = `
-    <div class="full-col">
+  // ── Outcome stats from past week
+  const completed = pastMtgs.filter(m => m.properties?.hs_meeting_outcome === 'COMPLETED').length;
+  const cancelled = pastMtgs.filter(m => ['CANCELLED','NO_SHOW'].includes(m.properties?.hs_meeting_outcome)).length;
+  const noOutcome = pastMtgs.length - completed - cancelled;
+
+  // ── Demo→Followup ratio per AE
+  const aeDemos = {}, aeFollowups = {};
+  allRelevant.forEach(m => {
+    const oid = String(m.properties?.hubspot_owner_id);
+    const name = ALL_OWNERS[oid]?.split(' ')[0] || '?';
+    if (meetingTypeLabel(m.properties?.hs_activity_type) === 'Demo') aeDemos[name] = (aeDemos[name]||0)+1;
+    if (meetingTypeLabel(m.properties?.hs_activity_type) === 'Follow-up') aeFollowups[name] = (aeFollowups[name]||0)+1;
+  });
+
+  const aeNames = [...new Set(Object.values(ALL_OWNERS).map(n => n.split(' ')[0]))].filter(n => aeDemos[n]||aeFollowups[n]);
+
+  // ── Day distribution next week
+  const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const dayCount = {1:0,2:0,3:0,4:0,5:0};
+  nextMtgs.forEach(m => {
+    const day = new Date(getMTime(m)).getDay();
+    if (day >= 1 && day <= 5) dayCount[day] = (dayCount[day]||0)+1;
+  });
+  const maxDay = Math.max(...Object.values(dayCount), 1);
+
+  // ── Expandable meeting lists
+  const makeList = (arr, emptyMsg) => arr.length === 0
+    ? `<div class="empty">${emptyMsg}</div>`
+    : arr.map(m => meetingRow(m)).join('');
+
+  html_content = `
+    <div class="kpi-row" style="margin-bottom:16px">
+      <div class="kpi-card">
+        <div class="kpi-label">Esta semana</div>
+        <div class="kpi-value">${thisMtgs.length}</div>
+        <div class="kpi-sub">${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos · ${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length} follow-ups</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Próxima semana</div>
+        <div class="kpi-value">${nextMtgs.length}</div>
+        <div class="kpi-sub">${demos.length - thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos · ${followups.length - thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length} follow-ups</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Semana pasada completadas</div>
+        <div class="kpi-value">${completed}</div>
+        <div class="kpi-sub">${pastMtgs.length} total · ${cancelled} canceladas</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Mix Demo vs Follow-up</div>
+        <div class="kpi-value">${demoPct}% / ${followPct}%</div>
+        <div class="kpi-sub">esta sem + próxima</div>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:14px">
       <div class="section-card">
         <div class="section-head">
           <div class="section-head-left">
-            <span class="section-title">Próxima semana</span>
-            <span class="section-count">${next.length}</span>
+            <span class="section-title">Tipo de reunión</span>
+            <span class="section-count">${allRelevant.length} total</span>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted)">esta sem + próxima</span>
+        </div>
+        <div style="padding:16px">
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            ${[
+              {label:'Demo', count:demos.length, pct:demoPct, color:'var(--purple)', bg:'var(--purple-light)'},
+              {label:'Follow-up', count:followups.length, pct:followPct, color:'var(--blue)', bg:'var(--blue-light)'},
+              {label:'Otros', count:others.length, pct:otherPct, color:'var(--text-muted)', bg:'var(--surface2)'},
+            ].map(t => `
+              <div style="flex:1;background:${t.bg};border-radius:var(--radius-md);padding:10px 12px;cursor:pointer" onclick="toggleMtgList('list-${t.label.toLowerCase().replace('-','')}')">
+                <div style="font-size:11px;font-weight:600;color:${t.color};margin-bottom:4px">${t.label}</div>
+                <div style="font-size:22px;font-weight:600;color:var(--text-primary);line-height:1">${t.count}</div>
+                <div style="font-size:11px;color:${t.color};margin-top:2px">${t.pct}%</div>
+              </div>
+            `).join('')}
+          </div>
+          <div style="height:6px;border-radius:3px;overflow:hidden;display:flex;gap:2px;margin-bottom:16px">
+            <div style="flex:${demoPct};background:var(--purple);border-radius:3px 0 0 3px"></div>
+            <div style="flex:${followPct};background:var(--blue)"></div>
+            <div style="flex:${otherPct};background:var(--surface2);border-radius:0 3px 3px 0"></div>
+          </div>
+          <div id="list-demo" style="display:none;border-top:1px solid var(--border);margin-top:8px">
+            <div style="font-size:11px;font-weight:600;color:var(--purple);padding:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em">Demos</div>
+            ${makeList([...thisMtgs,...nextMtgs].filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo'), 'Sin demos')}
+          </div>
+          <div id="list-followup" style="display:none;border-top:1px solid var(--border);margin-top:8px">
+            <div style="font-size:11px;font-weight:600;color:var(--blue);padding:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em">Follow-ups</div>
+            ${makeList([...thisMtgs,...nextMtgs].filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up'), 'Sin follow-ups')}
+          </div>
+          <div id="list-otros" style="display:none;border-top:1px solid var(--border);margin-top:8px">
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);padding:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em">Otros</div>
+            ${makeList([...thisMtgs,...nextMtgs].filter(m=>!['Demo','Follow-up'].includes(meetingTypeLabel(m.properties?.hs_activity_type))), 'Sin otras reuniones')}
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-head-left">
+            <span class="section-title">Reuniones por día</span>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted)">próxima semana</span>
+        </div>
+        <div style="padding:16px">
+          <div style="display:flex;align-items:flex-end;gap:8px;height:100px;margin-bottom:8px">
+            ${[1,2,3,4,5].map(d => `
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+                <div style="font-size:11px;font-weight:500;color:var(--text-secondary)">${dayCount[d]||''}</div>
+                <div style="width:100%;background:var(--ubits-blue);border-radius:4px 4px 0 0;min-height:4px;height:${Math.round((dayCount[d]||0)/maxDay*80)}px;transition:height 0.5s ease"></div>
+              </div>
+            `).join('')}
+          </div>
+          <div style="display:flex;gap:8px">
+            ${[1,2,3,4,5].map(d => `<div style="flex:1;text-align:center;font-size:11px;color:var(--text-muted)">${dayNames[d]}</div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:14px">
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-head-left">
+            <span class="section-title">Actividad por AE</span>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted)">esta sem + próxima</span>
+        </div>
+        <div style="padding:14px 16px">
+          ${aeNames.length === 0 ? '<div class="empty">Sin datos</div>' : aeNames.map((name,i) => {
+            const d = aeDemos[name]||0;
+            const f = aeFollowups[name]||0;
+            const tot = d+f;
+            const maxTot = Math.max(...aeNames.map(n => (aeDemos[n]||0)+(aeFollowups[n]||0)), 1);
+            return `
+              <div style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                  <span style="font-weight:500;color:var(--text-primary)">${name}</span>
+                  <span style="color:var(--text-muted)">${d} demos · ${f} follow-ups</span>
+                </div>
+                <div style="height:8px;border-radius:4px;overflow:hidden;background:var(--surface2);display:flex;gap:1px">
+                  <div style="flex:${d};background:var(--purple);border-radius:4px 0 0 4px;min-width:${d>0?'4px':'0'}"></div>
+                  <div style="flex:${f};background:var(--blue);border-radius:0 4px 4px 0;min-width:${f>0?'4px':'0'}"></div>
+                </div>
+              </div>`;
+          }).join('')}
+          <div style="display:flex;gap:12px;margin-top:8px">
+            <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)"><div style="width:10px;height:10px;background:var(--purple);border-radius:2px"></div>Demo</div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)"><div style="width:10px;height:10px;background:var(--blue);border-radius:2px"></div>Follow-up</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-head-left">
+            <span class="section-title">Próximas reuniones</span>
+            <span class="section-count">${nextMtgs.length}</span>
           </div>
           <span style="font-size:11px;color:var(--text-muted)">${fmtWeek(1)}</span>
         </div>
-        ${meetingsTable(next)}
-      </div>
-    </div>
-    <div class="two-col">
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Esta semana</span>
-            <span class="section-count">${current.length}</span>
-          </div>
-          <span style="font-size:11px;color:var(--text-muted)">${fmtWeek(0)}</span>
-        </div>
-        ${meetingsTable(current)}
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Semana pasada</span>
-            <span class="section-count">${past.length}</span>
-          </div>
-          <span style="font-size:11px;color:var(--text-muted)">${fmtWeek(-1)}</span>
-        </div>
-        ${meetingsTable(past)}
+        ${nextMtgs.length === 0 ? '<div class="empty">Sin reuniones agendadas</div>' : nextMtgs.slice(0,8).map(m => meetingRow(m)).join('')}
+        ${nextMtgs.length > 8 ? `<div style="text-align:center;padding:10px;font-size:12px;color:var(--text-muted)">+${nextMtgs.length-8} más</div>` : ''}
       </div>
     </div>
   `;
 
-  document.getElementById('content-reuniones').innerHTML = html;
+  document.getElementById('content-reuniones').innerHTML = html_content;
 }
 
 // ═══════════════════════════════════════════════
@@ -1642,6 +1753,17 @@ function focusBadge(demos, followups) {
 function toggleWeekDeals() {
   const panel = document.getElementById('week-deals-panel');
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleMtgList(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  ['list-demo','list-followup','list-otros'].forEach(lid => {
+    const e = document.getElementById(lid);
+    if (e) e.style.display = 'none';
+  });
+  if (!isOpen) el.style.display = 'block';
 }
 
 // Auto-load saved proxy URL

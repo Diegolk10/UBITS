@@ -399,6 +399,7 @@ body {
     <button class="nav-tab active" id="tab-equipo" onclick="switchTab('equipo')">Equipo</button>
     <button class="nav-tab" id="tab-vendedores" onclick="switchTab('vendedores')">Métricas personales</button>
     <button class="nav-tab" id="tab-reuniones" onclick="switchTab('reuniones')">Dashboard</button>
+    <button class="nav-tab" id="tab-presentacion" onclick="switchTab('presentacion')">⚡ Presentación semanal</button>
   </div>
 
   <div class="page active" id="page-equipo">
@@ -411,6 +412,10 @@ body {
 
   <div class="page" id="page-vendedores">
     <div id="content-vendedores"></div>
+  </div>
+
+  <div class="page" id="page-presentacion">
+    <div id="content-presentacion"></div>
   </div>
 
   <div class="page" id="page-reuniones">
@@ -963,6 +968,7 @@ function renderAll() {
   renderEquipo();
   renderVendedores();
   renderReuniones();
+  renderPresentacion();
   document.getElementById('loading-equipo').style.display = 'none';
   document.getElementById('content-equipo').style.display = 'block';
 }
@@ -2112,10 +2118,497 @@ window.addEventListener('load', () => {
 
 function switchTab(tab) {
   currentTab = tab;
-  ['equipo','vendedores','reuniones'].forEach(t => {
+  ['equipo','vendedores','reuniones','presentacion'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
     document.getElementById('page-' + t).classList.toggle('active', t === tab);
   });
+}
+
+// ═══════════════════════════════════════════════
+//  PRESENTACIÓN SEMANAL
+// ═══════════════════════════════════════════════
+let presSlide = 0;
+let presSlides = [];
+
+function renderPresentacion() {
+  const { start: ws, end: we } = weekRange(0);   // esta semana (reunión lunes)
+  const { start: ps, end: pe } = weekRange(-1);  // semana pasada (deals creados)
+
+  // Deals creados semana pasada por cada BD
+  const lastWeekDeals = (ownerId) => ALL_DEALS.filter(d => {
+    const cd = new Date(dealProp(d,'createdate'));
+    return String(dealProp(d,'hubspot_owner_id')) === String(ownerId) && cd >= ps && cd <= pe;
+  });
+
+  // Follow-ups semana pasada (reuniones)
+  const lastWeekFollowups = (ownerId) => ALL_MEETINGS.filter(m => {
+    const raw = m.properties?.hs_meeting_start_time;
+    if (!raw) return false;
+    const d = new Date(isNaN(raw) ? raw : parseInt(raw));
+    return String(m.properties?.hubspot_owner_id) === String(ownerId)
+      && d >= ps && d <= pe
+      && meetingTypeLabel(m.properties?.hs_activity_type) === 'Follow-up';
+  });
+
+  // Ganados/perdidos semana pasada
+  const lastWeekWon = (ownerId) => ALL_DEALS.filter(d => {
+    const cd = dealProp(d,'closedate');
+    if (!cd) return false;
+    const date = new Date(cd);
+    return String(dealProp(d,'hubspot_owner_id')) === String(ownerId)
+      && stageLabel(dealProp(d,'dealstage')) === 'In'
+      && date >= ps && date <= pe;
+  });
+  const lastWeekLost = (ownerId) => ALL_DEALS.filter(d => {
+    const cd = dealProp(d,'closedate');
+    if (!cd) return false;
+    const date = new Date(cd);
+    return String(dealProp(d,'hubspot_owner_id')) === String(ownerId)
+      && stageLabel(dealProp(d,'dealstage')) === 'Lost'
+      && date >= ps && date <= pe;
+  });
+
+  // Reuniones esta semana por tipo
+  const thisWeekMeetings = (ownerId) => ALL_MEETINGS.filter(m => {
+    const raw = m.properties?.hs_meeting_start_time;
+    if (!raw) return false;
+    const d = new Date(isNaN(raw) ? raw : parseInt(raw));
+    return String(m.properties?.hubspot_owner_id) === String(ownerId) && d >= ws && d <= we;
+  });
+
+  // BD ids only (no Sales Manager)
+  const bdIds = Object.keys(ALL_OWNERS).filter(id => {
+    const role = ownerRole(id);
+    return role === 'Business Developer' || role === 'Team Lead';
+  });
+
+  // ── GLOBAL SUMMARY SLIDE ──
+  const allLastWeekDeals = ALL_DEALS.filter(d => {
+    const cd = new Date(dealProp(d,'createdate'));
+    return CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id'))) && cd >= ps && cd <= pe;
+  });
+  const allWon = ALL_DEALS.filter(d => {
+    const cd = dealProp(d,'closedate');
+    if (!cd) return false;
+    const date = new Date(cd);
+    return CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id')))
+      && stageLabel(dealProp(d,'dealstage')) === 'In' && date >= ps && date <= pe;
+  });
+  const allLost = ALL_DEALS.filter(d => {
+    const cd = dealProp(d,'closedate');
+    if (!cd) return false;
+    const date = new Date(cd);
+    return CHILE_OWNER_IDS.has(String(dealProp(d,'hubspot_owner_id')))
+      && stageLabel(dealProp(d,'dealstage')) === 'Lost' && date >= ps && date <= pe;
+  });
+  const allThisWeekMtgs = ALL_MEETINGS.filter(m => {
+    const raw = m.properties?.hs_meeting_start_time;
+    if (!raw) return false;
+    const d = new Date(isNaN(raw) ? raw : parseInt(raw));
+    return CHILE_OWNER_IDS.has(String(m.properties?.hubspot_owner_id)) && d >= ws && d <= we;
+  });
+  const globalWonCLP = allWon.reduce((s,d)=>s+(parseFloat(dealProp(d,'amount'))||0),0);
+
+  const fmtDateSlide = (ts) => {
+    if (!ts) return '—';
+    const d = new Date(isNaN(ts) ? ts : parseInt(ts));
+    return d.toLocaleDateString('es-CL',{weekday:'short',day:'numeric',month:'short'});
+  };
+
+  const sqlRow = (d) => {
+    const name = dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'');
+    const val = fmtCLP(dealProp(d,'amount'));
+    const lic = dealProp(d,'licencias_vendidas') || '—';
+    const ind = dealIndustry(d);
+    const stage = stageBadge(dealProp(d,'dealstage'));
+    return `<tr>
+      <td style="font-weight:600;font-size:13px">${name}</td>
+      <td>${stage}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${val}</td>
+      <td style="font-size:12px;color:var(--text-secondary)">${lic}L</td>
+      <td style="font-size:12px;color:var(--text-secondary)">${ind}</td>
+    </tr>`;
+  };
+
+  const fuRow = (m) => {
+    const raw = m.properties?.hs_meeting_start_time;
+    const ts = raw ? (isNaN(raw) ? new Date(raw).getTime() : parseInt(raw)) : 0;
+    const title = m.properties?.hs_meeting_title || 'Reunión';
+    const parts = title.split('·');
+    const company = parts.length > 1 ? parts[parts.length-1].trim() : title;
+    return `<tr>
+      <td style="font-size:13px;font-weight:500">${company}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtDateSlide(raw)}</td>
+      <td>${meetingBadge(m.properties?.hs_activity_type)}</td>
+    </tr>`;
+  };
+
+  const dealRow = (d, won) => {
+    const name = dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'');
+    const val = fmtCLP(dealProp(d,'amount'));
+    return `<tr>
+      <td style="font-weight:600;font-size:13px">${name}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${val}</td>
+      <td><span class="badge ${won?'badge-in':'badge-lost'}">${won?'✓ Ganado':'✗ Perdido'}</span></td>
+    </tr>`;
+  };
+
+  const emptyRow = (msg) => `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);font-size:13px;padding:14px">${msg}</td></tr>`;
+
+  // ── BUILD SLIDES ARRAY ──
+  presSlides = [];
+
+  // Slide 0: Resumen equipo
+  presSlides.push(`
+    <div class="pres-slide-inner">
+      <div class="pres-slide-header pres-header-global">
+        <div>
+          <div class="pres-week-label">${fmtWeek(-1)}</div>
+          <div class="pres-slide-title">Resumen equipo · Chile</div>
+        </div>
+        <img src="https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/anthropic.svg" style="height:0" onerror="">
+      </div>
+      <div class="pres-kpi-grid">
+        <div class="pres-kpi-card pres-kpi-blue">
+          <div class="pres-kpi-lbl">SQLs creados</div>
+          <div class="pres-kpi-val">${allLastWeekDeals.length}</div>
+          <div class="pres-kpi-sub">sem. pasada</div>
+        </div>
+        <div class="pres-kpi-card pres-kpi-green">
+          <div class="pres-kpi-lbl">Ganados</div>
+          <div class="pres-kpi-val">${allWon.length}</div>
+          <div class="pres-kpi-sub">${fmtCLP(globalWonCLP)}</div>
+        </div>
+        <div class="pres-kpi-card pres-kpi-red">
+          <div class="pres-kpi-lbl">Perdidos</div>
+          <div class="pres-kpi-val">${allLost.length}</div>
+          <div class="pres-kpi-sub">sem. pasada</div>
+        </div>
+        <div class="pres-kpi-card pres-kpi-purple">
+          <div class="pres-kpi-lbl">Reuniones esta sem.</div>
+          <div class="pres-kpi-val">${allThisWeekMtgs.length}</div>
+          <div class="pres-kpi-sub">${allThisWeekMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos · ${allThisWeekMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length} follow-ups</div>
+        </div>
+      </div>
+
+      <div class="pres-two-col">
+        <!-- SQLs por BD -->
+        <div class="pres-section">
+          <div class="pres-section-title">📋 SQLs creados por BD</div>
+          <div style="padding:0 16px 12px">
+            ${bdIds.map(id => {
+              const name = ALL_OWNERS[id];
+              if (!name) return '';
+              const deals = lastWeekDeals(id);
+              const colorIdx = ownerColor(name);
+              const val = deals.reduce((s,d)=>s+(parseFloat(dealProp(d,'amount'))||0),0);
+              return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+                <div class="avatar av-${colorIdx}" style="width:28px;height:28px;font-size:10px">${initials(name)}</div>
+                <span style="font-size:13px;font-weight:600;flex:1">${name.split(' ')[0]}</span>
+                <span class="pres-count-badge">${deals.length} SQLs</span>
+                <span style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text-secondary)">${val>0?fmtCLP(val):''}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        <!-- Reuniones esta semana por BD -->
+        <div class="pres-section">
+          <div class="pres-section-title">📅 Reuniones esta semana por BD</div>
+          <div style="padding:0 16px 12px">
+            ${bdIds.map(id => {
+              const name = ALL_OWNERS[id];
+              if (!name) return '';
+              const mtgs = thisWeekMeetings(id);
+              const demos = mtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length;
+              const fups = mtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length;
+              const colorIdx = ownerColor(name);
+              return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+                <div class="avatar av-${colorIdx}" style="width:28px;height:28px;font-size:10px">${initials(name)}</div>
+                <span style="font-size:13px;font-weight:600;flex:1">${name.split(' ')[0]}</span>
+                <span class="badge badge-demo">${demos} demos</span>
+                <span class="badge badge-followup">${fups} follow-ups</span>
+                <span style="font-size:11px;color:var(--text-muted);font-weight:600">${mtgs.length} total</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  // Slide por BD
+  bdIds.forEach(id => {
+    const name = ALL_OWNERS[id];
+    if (!name) return;
+    const colorIdx = ownerColor(name);
+    const sqls = lastWeekDeals(id);
+    const fups = lastWeekFollowups(id);
+    const won = lastWeekWon(id);
+    const lost = lastWeekLost(id);
+    const thisMtgs = thisWeekMeetings(id);
+    const thisDemos = thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo');
+    const thisFups = thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up');
+    const totalVal = sqls.reduce((s,d)=>s+(parseFloat(dealProp(d,'amount'))||0),0);
+
+    presSlides.push(`
+      <div class="pres-slide-inner">
+        <div class="pres-slide-header">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div class="ae-avatar-lg av-${colorIdx}" style="width:44px;height:44px;font-size:16px;margin:0">${initials(name)}</div>
+            <div>
+              <div class="pres-week-label">${fmtWeek(-1)} · sem. pasada / ${fmtWeek(0)} · esta sem.</div>
+              <div class="pres-slide-title">${name}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,0.65);margin-top:2px">${ownerRole(id)} · Chile</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="pres-header-stat"><span>${sqls.length}</span><small>SQLs</small></div>
+            <div class="pres-header-stat pres-header-stat-green"><span>${won.length}</span><small>ganados</small></div>
+            <div class="pres-header-stat pres-header-stat-red"><span>${lost.length}</span><small>perdidos</small></div>
+            <div class="pres-header-stat pres-header-stat-purple"><span>${thisMtgs.length}</span><small>reuniones</small></div>
+          </div>
+        </div>
+
+        <div class="pres-four-grid">
+
+          <!-- 1. SQLs nuevos -->
+          <div class="pres-section">
+            <div class="pres-section-title">📋 Propuestas enviadas <span class="pres-section-badge">${sqls.length}</span></div>
+            ${sqls.length === 0
+              ? `<div class="pres-empty">Sin propuestas esta semana</div>`
+              : `<table class="pres-table">
+                  <thead><tr><th>Empresa</th><th>Etapa</th><th>Valor</th><th>Lic.</th><th>Industria</th></tr></thead>
+                  <tbody>${sqls.map(d=>sqlRow(d)).join('')}</tbody>
+                </table>`
+            }
+            ${sqls.length > 0 ? `<div class="pres-total-row">Total ${fmtCLP(totalVal)}</div>` : ''}
+          </div>
+
+          <!-- 2. Follow-ups / movimientos -->
+          <div class="pres-section">
+            <div class="pres-section-title">🔄 Follow-ups realizados <span class="pres-section-badge">${fups.length}</span></div>
+            ${fups.length === 0
+              ? `<div class="pres-empty">Sin follow-ups sem. pasada</div>`
+              : `<table class="pres-table">
+                  <thead><tr><th>Empresa</th><th>Fecha</th><th>Tipo</th></tr></thead>
+                  <tbody>${fups.map(m=>fuRow(m)).join('')}</tbody>
+                </table>`
+            }
+          </div>
+
+          <!-- 3. Ganados / Perdidos -->
+          <div class="pres-section">
+            <div class="pres-section-title" style="display:flex;gap:8px;align-items:center">
+              🏆 Resultados
+              <span class="pres-section-badge" style="background:var(--green-light);color:var(--green)">${won.length} ganados</span>
+              <span class="pres-section-badge" style="background:var(--red-light);color:var(--red)">${lost.length} perdidos</span>
+            </div>
+            ${won.length === 0 && lost.length === 0
+              ? `<div class="pres-empty">Sin cierres esta semana</div>`
+              : `<table class="pres-table">
+                  <thead><tr><th>Empresa</th><th>Valor</th><th>Resultado</th></tr></thead>
+                  <tbody>
+                    ${won.map(d=>dealRow(d,true)).join('')}
+                    ${lost.map(d=>dealRow(d,false)).join('')}
+                  </tbody>
+                </table>`
+            }
+          </div>
+
+          <!-- 4. Reuniones esta semana -->
+          <div class="pres-section">
+            <div class="pres-section-title">📅 Reuniones esta semana <span class="pres-section-badge">${thisMtgs.length}</span></div>
+            <div style="display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--border)">
+              <span class="badge badge-demo">🎯 ${thisDemos.length} demos</span>
+              <span class="badge badge-followup">🔄 ${thisFups.length} follow-ups</span>
+              <span class="badge" style="background:var(--surface2);color:var(--text-secondary)">📋 ${thisMtgs.filter(m=>!['Demo','Follow-up'].includes(meetingTypeLabel(m.properties?.hs_activity_type))).length} otros</span>
+            </div>
+            ${thisMtgs.length === 0
+              ? `<div class="pres-empty">Sin reuniones esta semana</div>`
+              : `<table class="pres-table">
+                  <thead><tr><th>Empresa</th><th>Día</th><th>Tipo</th></tr></thead>
+                  <tbody>${thisMtgs.slice(0,8).map(m=>fuRow(m)).join('')}</tbody>
+                </table>
+                ${thisMtgs.length > 8 ? `<div style="text-align:center;font-size:11px;color:var(--text-muted);padding:6px">+${thisMtgs.length-8} más</div>` : ''}`
+            }
+          </div>
+
+        </div>
+      </div>
+    `);
+  });
+
+  presSlide = 0;
+  renderPresSlide();
+
+  document.getElementById('content-presentacion').innerHTML = `
+    <style>
+      #pres-wrap {
+        padding: 0;
+        background: #F0F0EE;
+        min-height: calc(100vh - 100px);
+        position: relative;
+      }
+      #pres-wrap.pres-fullscreen {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 9999; min-height: 100vh;
+        overflow-y: auto;
+        background: #EEECEA;
+      }
+
+      .pres-topbar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 24px;
+        background: white;
+        border-bottom: 1px solid var(--border);
+        position: sticky; top: 0; z-index: 10;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      }
+      .pres-nav { display: flex; align-items: center; gap: 8px; }
+      .pres-nav-btn {
+        width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+        background: white; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        font-size: 14px; color: var(--text-secondary); transition: all 0.12s;
+      }
+      .pres-nav-btn:hover:not(:disabled) { background: var(--ubits-blue); color: white; border-color: var(--ubits-blue); }
+      .pres-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+      .pres-counter { font-size: 13px; font-weight: 600; color: var(--text-secondary); padding: 0 8px; }
+      .pres-slide-dots { display: flex; gap: 6px; }
+      .pres-dot {
+        width: 8px; height: 8px; border-radius: 50%; background: var(--border-md);
+        cursor: pointer; transition: all 0.15s;
+      }
+      .pres-dot.active { background: var(--ubits-blue); width: 20px; border-radius: 4px; }
+      .pres-fullscreen-btn {
+        font-size: 12px; font-weight: 500; color: var(--text-secondary);
+        background: var(--surface2); border: 1px solid var(--border);
+        padding: 6px 12px; border-radius: 8px; cursor: pointer;
+        display: flex; align-items: center; gap: 5px; font-family: 'DM Sans',sans-serif;
+        transition: all 0.12s;
+      }
+      .pres-fullscreen-btn:hover { background: var(--ubits-blue); color: white; border-color: var(--ubits-blue); }
+
+      #pres-slide-content { padding: 24px; }
+
+      .pres-slide-inner { max-width: 1100px; margin: 0 auto; }
+
+      .pres-slide-header {
+        background: linear-gradient(135deg, var(--ubits-blue-dark) 0%, var(--ubits-blue-mid) 100%);
+        border-radius: 16px; padding: 24px 28px;
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 20px; gap: 16px; flex-wrap: wrap;
+        box-shadow: 0 4px 20px rgba(12,26,140,0.2);
+      }
+      .pres-header-global {
+        background: linear-gradient(135deg, #07104F 0%, #1430B8 60%, #2650E8 100%);
+      }
+      .pres-week-label { font-size: 11px; color: rgba(255,255,255,0.55); font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 4px; }
+      .pres-slide-title { font-size: 24px; font-weight: 700; color: white; letter-spacing: -0.5px; line-height: 1.1; }
+      .pres-header-stat {
+        background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 10px; padding: 8px 14px; text-align: center; min-width: 60px;
+      }
+      .pres-header-stat span { display: block; font-size: 22px; font-weight: 700; color: white; line-height: 1; }
+      .pres-header-stat small { display: block; font-size: 10px; color: rgba(255,255,255,0.6); font-weight: 500; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+      .pres-header-stat-green { background: rgba(29,158,117,0.25); border-color: rgba(29,158,117,0.4); }
+      .pres-header-stat-red { background: rgba(163,45,45,0.25); border-color: rgba(163,45,45,0.4); }
+      .pres-header-stat-purple { background: rgba(83,74,183,0.35); border-color: rgba(83,74,183,0.4); }
+
+      .pres-kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+      .pres-kpi-card {
+        border-radius: 14px; padding: 18px 20px; position: relative; overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      }
+      .pres-kpi-blue { background: var(--ubits-blue-light); border: 1.5px solid rgba(12,26,140,0.12); }
+      .pres-kpi-green { background: var(--green-light); border: 1.5px solid rgba(29,158,117,0.2); }
+      .pres-kpi-red { background: var(--red-light); border: 1.5px solid rgba(163,45,45,0.15); }
+      .pres-kpi-purple { background: var(--purple-light); border: 1.5px solid rgba(83,74,183,0.15); }
+      .pres-kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-muted); margin-bottom: 6px; }
+      .pres-kpi-val { font-size: 36px; font-weight: 800; letter-spacing: -2px; line-height: 1; color: var(--text-primary); margin-bottom: 4px; }
+      .pres-kpi-sub { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+
+      .pres-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .pres-four-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+      .pres-section {
+        background: white; border: 1px solid var(--border); border-radius: 14px;
+        overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      }
+      .pres-section-title {
+        font-size: 12px; font-weight: 700; color: var(--text-primary);
+        padding: 12px 16px; border-bottom: 1px solid var(--border);
+        display: flex; align-items: center; gap: 6px; letter-spacing: -0.1px;
+      }
+      .pres-section-badge {
+        font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px;
+        background: var(--surface2); color: var(--text-secondary); border: 1px solid var(--border);
+      }
+      .pres-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .pres-table th { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 14px; text-align: left; background: var(--surface2); border-bottom: 1px solid var(--border); }
+      .pres-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+      .pres-table tr:last-child td { border-bottom: none; }
+      .pres-table tbody tr:hover td { background: #FAFAF8; }
+      .pres-empty { text-align: center; padding: 20px; font-size: 13px; color: var(--text-muted); }
+      .pres-total-row { padding: 8px 16px; text-align: right; font-size: 12px; font-weight: 700; color: var(--ubits-blue); background: var(--ubits-blue-light); border-top: 1px solid rgba(12,26,140,0.1); }
+      .pres-count-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: var(--ubits-blue-light); color: var(--ubits-blue); }
+
+      @media (max-width: 768px) {
+        .pres-kpi-grid { grid-template-columns: 1fr 1fr; }
+        .pres-two-col, .pres-four-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+
+    <div id="pres-wrap">
+      <div class="pres-topbar">
+        <div class="pres-nav">
+          <button class="pres-nav-btn" id="pres-prev" onclick="changePresSlide(-1)">←</button>
+          <span class="pres-counter" id="pres-counter">1 / ${presSlides.length}</span>
+          <button class="pres-nav-btn" id="pres-next" onclick="changePresSlide(1)">→</button>
+        </div>
+        <div class="pres-slide-dots" id="pres-dots">
+          ${presSlides.map((_,i) => `<div class="pres-dot${i===0?' active':''}" onclick="goToPresSlide(${i})" title="${i===0?'Resumen equipo':'BD '+(i)}"></div>`).join('')}
+        </div>
+        <button class="pres-fullscreen-btn" onclick="togglePresFullscreen()">⛶ Pantalla completa</button>
+      </div>
+      <div id="pres-slide-content"></div>
+    </div>
+  `;
+
+  renderPresSlide();
+}
+
+function renderPresSlide() {
+  const content = document.getElementById('pres-slide-content');
+  if (!content) return;
+  content.innerHTML = presSlides[presSlide] || '';
+
+  // Update nav
+  const prev = document.getElementById('pres-prev');
+  const next = document.getElementById('pres-next');
+  const counter = document.getElementById('pres-counter');
+  const dots = document.querySelectorAll('.pres-dot');
+  if (prev) prev.disabled = presSlide === 0;
+  if (next) next.disabled = presSlide === presSlides.length - 1;
+  if (counter) counter.textContent = `${presSlide + 1} / ${presSlides.length}`;
+  dots.forEach((d,i) => d.classList.toggle('active', i === presSlide));
+}
+
+function changePresSlide(dir) {
+  presSlide = Math.max(0, Math.min(presSlides.length - 1, presSlide + dir));
+  renderPresSlide();
+}
+
+function goToPresSlide(i) {
+  presSlide = i;
+  renderPresSlide();
+}
+
+function togglePresFullscreen() {
+  const wrap = document.getElementById('pres-wrap');
+  if (!wrap) return;
+  wrap.classList.toggle('pres-fullscreen');
+  const btn = wrap.querySelector('.pres-fullscreen-btn');
+  if (btn) btn.textContent = wrap.classList.contains('pres-fullscreen') ? '✕ Salir de pantalla completa' : '⛶ Pantalla completa';
 }
 
 </script>

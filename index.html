@@ -1396,10 +1396,10 @@ function renderRepDetail(id) {
         <div class="kpi-value">${nextMtgs.length}</div>
         <div class="kpi-sub">${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos · ${nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length} follow-ups</div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi-card" onclick="togglePipelinePanel()" style="cursor:pointer" title="Ver pipeline">
         <div class="kpi-label">Pipeline activo</div>
         <div class="kpi-value">${fmtCLP(pipeline)}</div>
-        <div class="kpi-sub">${activeDeals.length} negocios</div>
+        <div class="kpi-sub">${activeDeals.length} negocios · click para ver</div>
       </div>
     </div>
 
@@ -1420,7 +1420,7 @@ function renderRepDetail(id) {
           '<thead><tr><th>Empresa</th><th>Etapa</th><th>Valor CLP</th><th>Cierre est.</th></tr></thead><tbody>' +
           thisWeekDeals.map(d =>
             '<tr>' +
-            '<td><strong>' + dealProp(d,'dealname') + '</strong></td>' +
+            '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
             '<td>' + stageBadge(dealProp(d,'dealstage')) + '</td>' +
             '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
             '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—') + '</td>' +
@@ -1428,6 +1428,105 @@ function renderRepDetail(id) {
           ).join('') +
           '</tbody></table></div>'}
       </div>
+    </div>
+
+    <div id="pipeline-panel" style="display:none;margin-bottom:14px">
+      <div class="section-card" style="margin-bottom:12px">
+        <div class="section-head">
+          <div class="section-head-left">
+            <span class="section-title">Pipeline activo</span>
+            <span class="section-count">${activeDeals.length} negocios · ${fmtCLP(pipeline)}</span>
+          </div>
+          <button onclick="togglePipelinePanel()" style="font-size:11px;color:var(--text-muted);background:none;border:none;cursor:pointer">✕ cerrar</button>
+        </div>
+        ${activeDeals.length === 0 ? '<div class="empty">Sin deals activos</div>' :
+          '<div style="overflow-x:auto"><table class="data-table">' +
+          '<thead><tr><th>Empresa</th><th>Etapa</th><th>Valor CLP</th><th>Licencias</th><th>Industria</th><th>Cierre est.</th></tr></thead>' +
+          '<tbody>' +
+          activeDeals.map(d =>
+            '<tr>' +
+            '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
+            '<td>' + stageBadge(dealProp(d,'dealstage')) + '</td>' +
+            '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
+            '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'licencias_vendidas')||'—') + '</td>' +
+            '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'industria')||'—') + '</td>' +
+            '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—') + '</td>' +
+            '</tr>'
+          ).join('') +
+          '</tbody></table></div>'}
+      </div>
+
+      ${(() => {
+        const wonDealsAll = myDeals.filter(d => stageLabel(dealProp(d,'dealstage')) === 'In');
+        if (wonDealsAll.length === 0) return '';
+
+        // Industry breakdown for won deals
+        const indMap = {};
+        wonDealsAll.forEach(d => {
+          const ind = dealProp(d,'industria') || 'Sin industria';
+          indMap[ind] = (indMap[ind]||0) + 1;
+        });
+        const indEntries = Object.entries(indMap).sort((a,b) => b[1]-a[1]);
+        const indTotal = wonDealsAll.length;
+        const colors = ['#534AB7','#185FA5','#1D9E75','#854F0B','#A32D2D','#0F6E56','#0C1A8C'];
+
+        // Build donut SVG
+        let angle = -90;
+        const cx = 60, cy = 60, r = 45, stroke = 20;
+        const arcs = indEntries.map(([ ind, cnt ], i) => {
+          const pct = cnt / indTotal;
+          const deg = pct * 360;
+          const rad = deg * Math.PI / 180;
+          const startAngle = angle * Math.PI / 180;
+          const endAngle = (angle + deg) * Math.PI / 180;
+          const x1 = cx + r * Math.cos(startAngle);
+          const y1 = cy + r * Math.sin(startAngle);
+          const x2 = cx + r * Math.cos(endAngle);
+          const y2 = cy + r * Math.sin(endAngle);
+          const largeArc = deg > 180 ? 1 : 0;
+          const path = 'M ' + x1 + ' ' + y1 + ' A ' + r + ' ' + r + ' 0 ' + largeArc + ' 1 ' + x2 + ' ' + y2;
+          angle += deg;
+          return { path, color: colors[i % colors.length], ind, cnt, pct: Math.round(pct*100) };
+        });
+
+        const svgPaths = arcs.map(a =>
+          '<path d="' + a.path + '" fill="none" stroke="' + a.color + '" stroke-width="' + stroke + '" />'
+        ).join('');
+
+        const legend = arcs.map(a =>
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">' +
+          '<div style="width:10px;height:10px;border-radius:2px;background:' + a.color + ';flex-shrink:0"></div>' +
+          '<span style="font-size:12px;color:var(--text-secondary);flex:1">' + a.ind + '</span>' +
+          '<span style="font-size:12px;font-weight:500;color:var(--text-primary)">' + a.pct + '%</span>' +
+          '</div>'
+        ).join('');
+
+        return '<div class="section-card">' +
+          '<div class="section-head"><div class="section-head-left">' +
+          '<span class="section-title">Deals ganados (In) · por industria</span>' +
+          '<span class="section-count">' + wonDealsAll.length + ' deals · ' + fmtCLP(wonDealsAll.reduce((s,d)=>s+(parseFloat(dealProp(d,"amount"))||0),0)) + '</span>' +
+          '</div></div>' +
+          '<div style="display:flex;gap:20px;padding:16px;align-items:center">' +
+          '<svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0">' + svgPaths +
+          '<text x="60" y="55" text-anchor="middle" font-size="11" fill="var(--text-muted)">Total</text>' +
+          '<text x="60" y="70" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text-primary)">' + wonDealsAll.length + '</text>' +
+          '</svg>' +
+          '<div style="flex:1">' + legend + '</div>' +
+          '</div>' +
+          '<div style="overflow-x:auto"><table class="data-table">' +
+          '<thead><tr><th>Empresa</th><th>Valor CLP</th><th>Industria</th><th>Cierre</th></tr></thead>' +
+          '<tbody>' +
+          wonDealsAll.sort((a,b) => new Date(dealProp(b,'closedate')) - new Date(dealProp(a,'closedate'))).map(d =>
+            '<tr>' +
+            '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
+            '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
+            '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'industria')||'—') + '</td>' +
+            '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—') + '</td>' +
+            '</tr>'
+          ).join('') +
+          '</tbody></table></div>' +
+          '</div>';
+      })()}
     </div>
 
     <div style="margin-bottom:6px">
@@ -1752,6 +1851,11 @@ function focusBadge(demos, followups) {
 
 function toggleWeekDeals() {
   const panel = document.getElementById('week-deals-panel');
+  if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function togglePipelinePanel() {
+  const panel = document.getElementById('pipeline-panel');
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 

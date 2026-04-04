@@ -307,6 +307,11 @@ body {
 .q-deals { font-size: 11px; color: var(--text-muted); }
 @media (max-width: 640px) { .q-grid { grid-template-columns: repeat(2, 1fr); } }
 
+.focus-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 20px; letter-spacing: 0.02em; white-space: nowrap; }
+.focus-generacion { background: #E1F5EE; color: #0F6E56; border: 1px solid #9FE1CB; }
+.focus-seguimiento { background: #EEEDFE; color: #534AB7; border: 1px solid #AFA9EC; }
+.focus-conversion { background: #E6F1FB; color: #185FA5; border: 1px solid #B5D4F4; }
+
 /* ── MEETING ROWS ── */
 .meeting-item { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); gap: 10px; transition: background 0.1s; }
 .meeting-item:last-child { border-bottom: none; }
@@ -1292,14 +1297,22 @@ function renderVendedores() {
       .filter(d => !['closedwon','closedlost'].includes(dealProp(d,'dealstage')?.toLowerCase()))
       .reduce((s, d) => s + (parseFloat(dealProp(d,'amount')) || 0), 0);
     const leader = isLeader(id);
+    const { start: nsCard, end: neCard } = weekRange(1);
+    const cardNextDemos = nextMtgs.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Demo').length;
+    const cardNextFollowups = nextMtgs.filter(m => meetingTypeLabel(m.properties?.hs_activity_type) === 'Follow-up').length;
+    const activePipeline = myDeals.filter(d => !['In','Lost'].includes(stageLabel(dealProp(d,'dealstage')))).reduce((s,d) => s + (parseFloat(dealProp(d,'amount'))||0), 0);
+
     return `
       <div class="ae-card${leader ? ' ae-card-leader' : ''}" onclick="selectRep('${id}')">
         ${leader ? '<div class="ae-leader-badge">Líder</div>' : ''}
-        <div class="ae-avatar-lg av-${colorIdx}">${initials(name)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div class="ae-avatar-lg av-${colorIdx}" style="margin-bottom:0">${initials(name)}</div>
+          ${focusBadge(cardNextDemos, cardNextFollowups)}
+        </div>
         <div class="ae-name">${name.split(' ').slice(0,1).join(' ')} ${name.split(' ').slice(-1).join(' ')}</div>
         <div class="ae-stat-row"><span>Deals esta semana</span><span class="ae-stat-val">${thisWeek.length}</span></div>
         <div class="ae-stat-row"><span>Reuniones próx.</span><span class="ae-stat-val">${nextMtgs.length}</span></div>
-        <div class="ae-stat-row"><span>Pipeline</span><span class="ae-stat-val">${fmtCLP(pipeline)}</span></div>
+        <div class="ae-stat-row"><span>Pipeline activo</span><span class="ae-stat-val">${fmtCLP(activePipeline)}</span></div>
       </div>
     `;
   }
@@ -1379,12 +1392,18 @@ function renderRepDetail(id) {
     <div class="back-row">
       <button class="back-btn" onclick="backToReps()">← Todos los AEs</button>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-      <div class="ae-avatar-lg av-${idx}" style="width:48px;height:48px;font-size:17px;margin-bottom:0">${initials(name)}</div>
-      <div>
-        <div class="rep-header-name">${name}</div>
-        <div style="font-size:13px;color:var(--text-secondary)">${ownerRole(id)} · Chile</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="ae-avatar-lg av-${idx}" style="width:48px;height:48px;font-size:17px;margin-bottom:0">${initials(name)}</div>
+        <div>
+          <div class="rep-header-name">${name}</div>
+          <div style="font-size:13px;color:var(--text-secondary)">${ownerRole(id)} · Chile</div>
+        </div>
       </div>
+      ${focusBadge(
+        nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length,
+        nextMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length
+      )}
     </div>
 
     <div class="kpi-row">
@@ -1635,6 +1654,17 @@ function renderReuniones() {
 // ═══════════════════════════════════════════════
 //  TAB SWITCHING
 // ═══════════════════════════════════════════════
+function getFocus(demos, followups) {
+  if (followups > demos) return { label: 'Foco en generación', cls: 'focus-generacion', icon: '🚀' };
+  if (demos > followups) return { label: 'Foco en seguimiento', cls: 'focus-seguimiento', icon: '🎯' };
+  return { label: 'Foco en conversión', cls: 'focus-conversion', icon: '⚡' };
+}
+
+function focusBadge(demos, followups) {
+  const f = getFocus(demos, followups);
+  return `<span class="focus-badge ${f.cls}">${f.icon} ${f.label}</span>`;
+}
+
 function toggleWeekDeals() {
   const panel = document.getElementById('week-deals-panel');
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';

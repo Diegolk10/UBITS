@@ -1763,7 +1763,7 @@ function renderReuniones() {
   const donutData = [
     { label: 'Demo', count: demos.length, pct: demoPct, color: '#534AB7' },
     { label: 'Follow-up', count: followups.length, pct: followPct, color: '#185FA5' },
-    { label: 'Otros', count: others.length, pct: otherPct, color: '#D1CFC9' },
+    { label: 'Sin tipo', count: others.length, pct: otherPct, color: '#D1CFC9' },
   ];
   let donutAngle = -90;
   const donutR = 52, donutCx = 70, donutCy = 70, donutStroke = 22;
@@ -1914,7 +1914,7 @@ function renderReuniones() {
             <!-- Legend chips -->
             <div style="flex:1;display:flex;flex-direction:column;gap:10px">
               ${donutData.map(seg => `
-                <div style="cursor:pointer" onclick="toggleMtgList('list-${seg.label.toLowerCase().replace('-','')}')">
+                <div style="cursor:pointer" onclick="toggleMtgList('list-${seg.label === 'Sin tipo' ? 'otros' : seg.label.toLowerCase().replace('-','')}')">
                   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
                     <div style="display:flex;align-items:center;gap:7px">
                       <div style="width:10px;height:10px;border-radius:3px;background:${seg.color};flex-shrink:0"></div>
@@ -1941,7 +1941,7 @@ function renderReuniones() {
             ${makeList([...thisMtgs,...nextMtgs].filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up'), 'Sin follow-ups')}
           </div>
           <div id="list-otros" style="display:none;border-top:1px solid var(--border);padding-top:12px">
-            <div style="font-size:10px;font-weight:700;color:var(--text-muted);padding-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">Otros</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);padding-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">Sin tipo de reunión</div>
             ${makeList([...thisMtgs,...nextMtgs].filter(m=>!['Demo','Follow-up'].includes(meetingTypeLabel(m.properties?.hs_activity_type))), 'Sin otras reuniones')}
           </div>
         </div>
@@ -1971,7 +1971,7 @@ function renderReuniones() {
             ${[1,2,3,4,5].map(d => `<div style="flex:1;text-align:center;font-size:11px;font-weight:500;color:var(--text-muted)">${dayNames[d]}</div>`).join('')}
           </div>
           <div style="margin-top:16px;padding:12px 14px;background:var(--ubits-blue-light);border-radius:10px;display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:11px;font-weight:600;color:var(--ubits-blue)">Pico de la semana</span>
+            <span style="font-size:11px;font-weight:600;color:var(--ubits-blue)">Mejor día de la semana</span>
             <span style="font-size:13px;font-weight:700;color:var(--ubits-blue)">${dayNames[Object.entries(dayCount).sort((a,b)=>b[1]-a[1])[0]?.[0]??1] || '—'} · ${maxDay} reuniones</span>
           </div>
         </div>
@@ -1984,7 +1984,7 @@ function renderReuniones() {
       <!-- Actividad por AE rediseñado -->
       <div class="dash-section">
         <div class="dash-section-head">
-          <span class="dash-section-title">Actividad por AE</span>
+          <span class="dash-section-title">Actividades por BD</span>
           <span class="dash-section-meta">esta sem + próxima</span>
         </div>
         <div style="padding:8px 0">

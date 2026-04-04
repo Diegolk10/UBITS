@@ -1759,139 +1759,282 @@ function renderReuniones() {
     ? `<div class="empty">${emptyMsg}</div>`
     : arr.map(m => meetingRow(m)).join('');
 
+  // ── Donut chart SVG for meeting type mix
+  const donutData = [
+    { label: 'Demo', count: demos.length, pct: demoPct, color: '#534AB7' },
+    { label: 'Follow-up', count: followups.length, pct: followPct, color: '#185FA5' },
+    { label: 'Otros', count: others.length, pct: otherPct, color: '#D1CFC9' },
+  ];
+  let donutAngle = -90;
+  const donutR = 52, donutCx = 70, donutCy = 70, donutStroke = 22;
+  const donutPaths = donutData.map(seg => {
+    const deg = (seg.count / (allRelevant.length || 1)) * 360;
+    const rad1 = donutAngle * Math.PI / 180;
+    const rad2 = (donutAngle + deg) * Math.PI / 180;
+    const x1 = donutCx + donutR * Math.cos(rad1), y1 = donutCy + donutR * Math.sin(rad1);
+    const x2 = donutCx + donutR * Math.cos(rad2), y2 = donutCy + donutR * Math.sin(rad2);
+    const large = deg > 180 ? 1 : 0;
+    const path = deg > 0 ? `M ${x1} ${y1} A ${donutR} ${donutR} 0 ${large} 1 ${x2} ${y2}` : '';
+    donutAngle += deg;
+    return { ...seg, path };
+  });
+
+  // ── KPI accent colors
+  const kpiThisColor = '#0C1A8C';
+  const kpiNextColor = '#534AB7';
+  const kpiPastColor = '#1D9E75';
+  const kpiMixColor = '#185FA5';
+
+  const thisD = thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length;
+  const thisF = thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length;
+  const nextD = demos.length - thisD;
+  const nextF = followups.length - thisF;
+
   html_content = `
-    <div class="kpi-row" style="margin-bottom:16px">
-      <div class="kpi-card">
-        <div class="kpi-label">Esta semana</div>
-        <div class="kpi-value">${thisMtgs.length}</div>
-        <div class="kpi-sub">${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos · ${thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length} follow-ups</div>
+    <style>
+      .dash-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
+      .dash-kpi {
+        background:var(--surface);
+        border:1px solid var(--border);
+        border-radius:16px;
+        padding:18px 20px 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+        position:relative; overflow:hidden;
+      }
+      .dash-kpi::before {
+        content:''; position:absolute; top:0; left:0; right:0; height:3px;
+        background: var(--dash-kpi-accent, var(--ubits-blue));
+        border-radius:16px 16px 0 0;
+      }
+      .dash-kpi-accent-line { height:3px; border-radius:2px; margin-bottom:14px; }
+      .dash-kpi-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.09em; color:var(--text-muted); margin-bottom:6px; }
+      .dash-kpi-value { font-size:32px; font-weight:700; letter-spacing:-1.5px; line-height:1; color:var(--text-primary); margin-bottom:6px; }
+      .dash-kpi-pills { display:flex; gap:5px; flex-wrap:wrap; }
+      .dash-kpi-pill { font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+      .dash-kpi-pill-demo { background:var(--purple-light); color:var(--purple); }
+      .dash-kpi-pill-follow { background:var(--blue-light); color:var(--blue); }
+      .dash-kpi-pill-neu { background:var(--surface2); color:var(--text-secondary); }
+
+      .dash-section { background:var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow:0 2px 8px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04); overflow:hidden; }
+      .dash-section-head { padding:16px 20px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+      .dash-section-title { font-size:13px; font-weight:700; letter-spacing:-0.2px; color:var(--text-primary); }
+      .dash-section-meta { font-size:11px; color:var(--text-muted); }
+      .dash-section-badge { font-size:11px; background:var(--surface2); color:var(--text-secondary); padding:2px 8px; border-radius:20px; border:1px solid var(--border); font-weight:500; }
+
+      .dash-bar-chart { display:flex; align-items:flex-end; gap:10px; height:120px; padding:0 4px; }
+      .dash-bar-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:0; }
+      .dash-bar-val { font-size:12px; font-weight:700; color:var(--text-primary); margin-bottom:5px; min-height:17px; }
+      .dash-bar { width:100%; border-radius:6px 6px 0 0; transition:height 0.6s cubic-bezier(0.34,1.56,0.64,1); position:relative; }
+      .dash-bar-label { font-size:11px; color:var(--text-muted); margin-top:8px; font-weight:500; }
+      .dash-bar-baseline { height:1px; background:var(--border-md); margin:0 4px 12px; }
+
+      .dash-ae-row { display:flex; align-items:center; gap:12px; padding:10px 20px; border-bottom:1px solid var(--border); }
+      .dash-ae-row:last-child { border-bottom:none; }
+      .dash-ae-name { font-size:12px; font-weight:600; color:var(--text-primary); width:68px; flex-shrink:0; }
+      .dash-ae-bars { flex:1; display:flex; flex-direction:column; gap:4px; }
+      .dash-ae-bar-wrap { display:flex; align-items:center; gap:6px; }
+      .dash-ae-bar-track { flex:1; height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; }
+      .dash-ae-bar-fill { height:100%; border-radius:3px; transition:width 0.5s ease; }
+      .dash-ae-bar-num { font-size:10px; font-weight:600; width:18px; text-align:right; flex-shrink:0; }
+      .dash-ae-totalbadge { font-size:11px; font-weight:700; color:var(--text-primary); width:24px; text-align:right; flex-shrink:0; }
+
+      .dash-type-chip {
+        flex:1; border-radius:12px; padding:14px 16px; cursor:pointer;
+        transition:transform 0.15s, box-shadow 0.15s;
+        border:1.5px solid transparent;
+      }
+      .dash-type-chip:hover { transform:translateY(-2px); box-shadow:0 4px 14px rgba(0,0,0,0.1); }
+      .dash-type-chip-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
+      .dash-type-chip-value { font-size:28px; font-weight:700; letter-spacing:-1px; line-height:1; color:var(--text-primary); }
+      .dash-type-chip-pct { font-size:12px; font-weight:600; margin-top:4px; }
+
+      .dash-mixbar { height:8px; border-radius:4px; overflow:hidden; display:flex; gap:2px; margin:16px 0 4px; }
+      .dash-mixbar-seg { transition:flex 0.5s ease; border-radius:4px; }
+
+      @media (max-width:640px) { .dash-kpi-row { grid-template-columns:1fr 1fr; } }
+    </style>
+
+    <!-- KPI ROW -->
+    <div class="dash-kpi-row">
+      <div class="dash-kpi" style="--dash-kpi-accent:${kpiThisColor}">
+        <div class="dash-kpi-label">Esta semana</div>
+        <div class="dash-kpi-value">${thisMtgs.length}</div>
+        <div class="dash-kpi-pills">
+          <span class="dash-kpi-pill dash-kpi-pill-demo">🎯 ${thisD} demos</span>
+          <span class="dash-kpi-pill dash-kpi-pill-follow">🔄 ${thisF} follow-ups</span>
+        </div>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Próxima semana</div>
-        <div class="kpi-value">${nextMtgs.length}</div>
-        <div class="kpi-sub">${demos.length - thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo').length} demos · ${followups.length - thisMtgs.filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up').length} follow-ups</div>
+      <div class="dash-kpi" style="--dash-kpi-accent:${kpiNextColor}">
+        <div class="dash-kpi-label">Próxima semana</div>
+        <div class="dash-kpi-value">${nextMtgs.length}</div>
+        <div class="dash-kpi-pills">
+          <span class="dash-kpi-pill dash-kpi-pill-demo">🎯 ${nextD} demos</span>
+          <span class="dash-kpi-pill dash-kpi-pill-follow">🔄 ${nextF} follow-ups</span>
+        </div>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Semana pasada completadas</div>
-        <div class="kpi-value">${completed}</div>
-        <div class="kpi-sub">${pastMtgs.length} total · ${cancelled} canceladas</div>
+      <div class="dash-kpi" style="--dash-kpi-accent:${kpiPastColor}">
+        <div class="dash-kpi-label">Sem. pasada completadas</div>
+        <div class="dash-kpi-value">${completed}</div>
+        <div class="dash-kpi-pills">
+          <span class="dash-kpi-pill dash-kpi-pill-neu">📋 ${pastMtgs.length} total</span>
+          <span class="dash-kpi-pill" style="background:var(--red-light);color:var(--red)">✕ ${cancelled} cancel.</span>
+        </div>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Mix Demo vs Follow-up</div>
-        <div class="kpi-value">${demoPct}% / ${followPct}%</div>
-        <div class="kpi-sub">esta sem + próxima</div>
+      <div class="dash-kpi" style="--dash-kpi-accent:${kpiMixColor}">
+        <div class="dash-kpi-label">Mix Demo / Follow-up</div>
+        <div class="dash-kpi-value" style="font-size:26px;letter-spacing:-1px">${demoPct}% <span style="color:var(--border-md);font-weight:300">/</span> ${followPct}%</div>
+        <div class="dash-mixbar" style="margin:10px 0 0">
+          <div class="dash-mixbar-seg" style="flex:${demoPct};background:#534AB7;min-width:${demoPct>0?'6px':'0'}"></div>
+          <div class="dash-mixbar-seg" style="flex:${followPct};background:#185FA5;min-width:${followPct>0?'6px':'0'}"></div>
+          <div class="dash-mixbar-seg" style="flex:${otherPct};background:var(--surface2);min-width:${otherPct>0?'4px':'0'}"></div>
+        </div>
       </div>
     </div>
 
+    <!-- ROW 2: Tipo reunión (donut) + Barras por día -->
     <div class="two-col" style="margin-bottom:14px">
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Tipo de reunión</span>
-            <span class="section-count">${allRelevant.length} total</span>
+
+      <!-- Tipo de reunión con donut -->
+      <div class="dash-section">
+        <div class="dash-section-head">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="dash-section-title">Tipo de reunión</span>
+            <span class="dash-section-badge">${allRelevant.length} total</span>
           </div>
-          <span style="font-size:11px;color:var(--text-muted)">esta sem + próxima</span>
+          <span class="dash-section-meta">esta sem + próxima</span>
         </div>
-        <div style="padding:16px">
-          <div style="display:flex;gap:8px;margin-bottom:16px">
-            ${[
-              {label:'Demo', count:demos.length, pct:demoPct, color:'var(--purple)', bg:'var(--purple-light)'},
-              {label:'Follow-up', count:followups.length, pct:followPct, color:'var(--blue)', bg:'var(--blue-light)'},
-              {label:'Otros', count:others.length, pct:otherPct, color:'var(--text-muted)', bg:'var(--surface2)'},
-            ].map(t => `
-              <div style="flex:1;background:${t.bg};border-radius:var(--radius-md);padding:10px 12px;cursor:pointer" onclick="toggleMtgList('list-${t.label.toLowerCase().replace('-','')}')">
-                <div style="font-size:11px;font-weight:600;color:${t.color};margin-bottom:4px">${t.label}</div>
-                <div style="font-size:22px;font-weight:600;color:var(--text-primary);line-height:1">${t.count}</div>
-                <div style="font-size:11px;color:${t.color};margin-top:2px">${t.pct}%</div>
-              </div>
-            `).join('')}
+        <div style="padding:20px">
+          <div style="display:flex;align-items:center;gap:24px;margin-bottom:20px">
+            <!-- Donut SVG -->
+            <svg width="140" height="140" viewBox="0 0 140 140" style="flex-shrink:0">
+              ${donutPaths.map(s => s.path ? `<path d="${s.path}" fill="none" stroke="${s.color}" stroke-width="${donutStroke}" stroke-linecap="butt"/>` : '').join('')}
+              <text x="70" y="65" text-anchor="middle" font-size="11" fill="var(--text-muted)" font-family="DM Sans,sans-serif" font-weight="500">Total</text>
+              <text x="70" y="84" text-anchor="middle" font-size="22" fill="var(--text-primary)" font-family="DM Sans,sans-serif" font-weight="700" letter-spacing="-1">${allRelevant.length}</text>
+            </svg>
+            <!-- Legend chips -->
+            <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+              ${donutData.map(seg => `
+                <div style="cursor:pointer" onclick="toggleMtgList('list-${seg.label.toLowerCase().replace('-','')}')">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+                    <div style="display:flex;align-items:center;gap:7px">
+                      <div style="width:10px;height:10px;border-radius:3px;background:${seg.color};flex-shrink:0"></div>
+                      <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${seg.label}</span>
+                    </div>
+                    <div style="display:flex;align-items:baseline;gap:5px">
+                      <span style="font-size:18px;font-weight:700;letter-spacing:-0.5px;color:var(--text-primary)">${seg.count}</span>
+                      <span style="font-size:11px;color:var(--text-muted);font-weight:500">${seg.pct}%</span>
+                    </div>
+                  </div>
+                  <div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">
+                    <div style="height:100%;width:${seg.pct}%;background:${seg.color};border-radius:3px;transition:width 0.6s ease"></div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
           </div>
-          <div style="height:6px;border-radius:3px;overflow:hidden;display:flex;gap:2px;margin-bottom:16px">
-            <div style="flex:${demoPct};background:var(--purple);border-radius:3px 0 0 3px"></div>
-            <div style="flex:${followPct};background:var(--blue)"></div>
-            <div style="flex:${otherPct};background:var(--surface2);border-radius:0 3px 3px 0"></div>
-          </div>
-          <div id="list-demo" style="display:none;border-top:1px solid var(--border);margin-top:8px">
-            <div style="font-size:11px;font-weight:600;color:var(--purple);padding:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em">Demos</div>
+          <div id="list-demo" style="display:none;border-top:1px solid var(--border);padding-top:12px">
+            <div style="font-size:10px;font-weight:700;color:#534AB7;padding-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">Demos</div>
             ${makeList([...thisMtgs,...nextMtgs].filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Demo'), 'Sin demos')}
           </div>
-          <div id="list-followup" style="display:none;border-top:1px solid var(--border);margin-top:8px">
-            <div style="font-size:11px;font-weight:600;color:var(--blue);padding:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em">Follow-ups</div>
+          <div id="list-followup" style="display:none;border-top:1px solid var(--border);padding-top:12px">
+            <div style="font-size:10px;font-weight:700;color:#185FA5;padding-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">Follow-ups</div>
             ${makeList([...thisMtgs,...nextMtgs].filter(m=>meetingTypeLabel(m.properties?.hs_activity_type)==='Follow-up'), 'Sin follow-ups')}
           </div>
-          <div id="list-otros" style="display:none;border-top:1px solid var(--border);margin-top:8px">
-            <div style="font-size:11px;font-weight:600;color:var(--text-muted);padding:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em">Otros</div>
+          <div id="list-otros" style="display:none;border-top:1px solid var(--border);padding-top:12px">
+            <div style="font-size:10px;font-weight:700;color:var(--text-muted);padding-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">Otros</div>
             ${makeList([...thisMtgs,...nextMtgs].filter(m=>!['Demo','Follow-up'].includes(meetingTypeLabel(m.properties?.hs_activity_type))), 'Sin otras reuniones')}
           </div>
         </div>
       </div>
 
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Reuniones por día</span>
-          </div>
-          <span style="font-size:11px;color:var(--text-muted)">próxima semana</span>
+      <!-- Barras por día mejoradas -->
+      <div class="dash-section">
+        <div class="dash-section-head">
+          <span class="dash-section-title">Reuniones por día</span>
+          <span class="dash-section-meta">próxima semana</span>
         </div>
-        <div style="padding:16px">
-          <div style="display:flex;align-items:flex-end;gap:8px;height:100px;margin-bottom:8px">
-            ${[1,2,3,4,5].map(d => `
-              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                <div style="font-size:11px;font-weight:500;color:var(--text-secondary)">${dayCount[d]||''}</div>
-                <div style="width:100%;background:var(--ubits-blue);border-radius:4px 4px 0 0;min-height:4px;height:${Math.round((dayCount[d]||0)/maxDay*80)}px;transition:height 0.5s ease"></div>
-              </div>
-            `).join('')}
+        <div style="padding:20px 20px 16px">
+          <div class="dash-bar-chart">
+            ${[1,2,3,4,5].map(d => {
+              const cnt = dayCount[d] || 0;
+              const h = Math.round((cnt / maxDay) * 90);
+              const isMax = cnt === maxDay && cnt > 0;
+              return `
+                <div class="dash-bar-col">
+                  <div class="dash-bar-val" style="color:${isMax?'var(--ubits-blue)':'var(--text-primary)'}">${cnt > 0 ? cnt : ''}</div>
+                  <div class="dash-bar" style="height:${Math.max(h,cnt>0?6:0)}px;background:${isMax ? 'linear-gradient(180deg,#2650E8,#0C1A8C)' : 'linear-gradient(180deg,#6B7FD4,#1430B8)'};box-shadow:${isMax?'0 4px 16px rgba(12,26,140,0.3)':'none'}"></div>
+                </div>`;
+            }).join('')}
           </div>
-          <div style="display:flex;gap:8px">
-            ${[1,2,3,4,5].map(d => `<div style="flex:1;text-align:center;font-size:11px;color:var(--text-muted)">${dayNames[d]}</div>`).join('')}
+          <div class="dash-bar-baseline"></div>
+          <div style="display:flex;gap:10px;padding:0 4px">
+            ${[1,2,3,4,5].map(d => `<div style="flex:1;text-align:center;font-size:11px;font-weight:500;color:var(--text-muted)">${dayNames[d]}</div>`).join('')}
+          </div>
+          <div style="margin-top:16px;padding:12px 14px;background:var(--ubits-blue-light);border-radius:10px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:11px;font-weight:600;color:var(--ubits-blue)">Pico de la semana</span>
+            <span style="font-size:13px;font-weight:700;color:var(--ubits-blue)">${dayNames[Object.entries(dayCount).sort((a,b)=>b[1]-a[1])[0]?.[0]??1] || '—'} · ${maxDay} reuniones</span>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- ROW 3: Actividad AE + Próximas reuniones -->
     <div class="two-col" style="margin-bottom:14px">
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Actividad por AE</span>
-          </div>
-          <span style="font-size:11px;color:var(--text-muted)">esta sem + próxima</span>
+
+      <!-- Actividad por AE rediseñado -->
+      <div class="dash-section">
+        <div class="dash-section-head">
+          <span class="dash-section-title">Actividad por AE</span>
+          <span class="dash-section-meta">esta sem + próxima</span>
         </div>
-        <div style="padding:14px 16px">
-          ${aeNames.length === 0 ? '<div class="empty">Sin datos</div>' : aeNames.map((name,i) => {
-            const d = aeDemos[name]||0;
-            const f = aeFollowups[name]||0;
-            const tot = d+f;
+        <div style="padding:8px 0">
+          ${aeNames.length === 0 ? '<div class="empty">Sin datos</div>' : (() => {
             const maxTot = Math.max(...aeNames.map(n => (aeDemos[n]||0)+(aeFollowups[n]||0)), 1);
-            return `
-              <div style="margin-bottom:12px">
-                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                  <span style="font-weight:500;color:var(--text-primary)">${name}</span>
-                  <span style="color:var(--text-muted)">${d} demos · ${f} follow-ups</span>
-                </div>
-                <div style="height:8px;border-radius:4px;overflow:hidden;background:var(--surface2);display:flex;gap:1px">
-                  <div style="flex:${d};background:var(--purple);border-radius:4px 0 0 4px;min-width:${d>0?'4px':'0'}"></div>
-                  <div style="flex:${f};background:var(--blue);border-radius:0 4px 4px 0;min-width:${f>0?'4px':'0'}"></div>
-                </div>
-              </div>`;
-          }).join('')}
-          <div style="display:flex;gap:12px;margin-top:8px">
-            <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)"><div style="width:10px;height:10px;background:var(--purple);border-radius:2px"></div>Demo</div>
-            <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)"><div style="width:10px;height:10px;background:var(--blue);border-radius:2px"></div>Follow-up</div>
+            return aeNames.map(name => {
+              const d = aeDemos[name]||0;
+              const f = aeFollowups[name]||0;
+              const tot = d + f;
+              const dW = Math.round((d / maxTot) * 100);
+              const fW = Math.round((f / maxTot) * 100);
+              return `
+                <div class="dash-ae-row">
+                  <div class="dash-ae-name">${name}</div>
+                  <div class="dash-ae-bars">
+                    <div class="dash-ae-bar-wrap">
+                      <div class="dash-ae-bar-track">
+                        <div class="dash-ae-bar-fill" style="width:${dW}%;background:#534AB7"></div>
+                      </div>
+                      <div class="dash-ae-bar-num" style="color:#534AB7">${d}</div>
+                    </div>
+                    <div class="dash-ae-bar-wrap">
+                      <div class="dash-ae-bar-track">
+                        <div class="dash-ae-bar-fill" style="width:${fW}%;background:#185FA5"></div>
+                      </div>
+                      <div class="dash-ae-bar-num" style="color:#185FA5">${f}</div>
+                    </div>
+                  </div>
+                  <div class="dash-ae-totalbadge">${tot}</div>
+                </div>`;
+            }).join('');
+          })()}
+          <div style="display:flex;gap:14px;padding:10px 20px 6px;border-top:1px solid var(--border);margin-top:4px">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted)"><div style="width:10px;height:10px;border-radius:2px;background:#534AB7"></div>Demo</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted)"><div style="width:10px;height:10px;border-radius:2px;background:#185FA5"></div>Follow-up</div>
           </div>
         </div>
       </div>
 
-      <div class="section-card">
-        <div class="section-head">
-          <div class="section-head-left">
-            <span class="section-title">Próximas reuniones</span>
-            <span class="section-count">${nextMtgs.length}</span>
+      <!-- Próximas reuniones -->
+      <div class="dash-section">
+        <div class="dash-section-head">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="dash-section-title">Próximas reuniones</span>
+            <span class="dash-section-badge">${nextMtgs.length}</span>
           </div>
-          <span style="font-size:11px;color:var(--text-muted)">${fmtWeek(1)}</span>
+          <span class="dash-section-meta">${fmtWeek(1)}</span>
         </div>
         ${nextMtgs.length === 0 ? '<div class="empty">Sin reuniones agendadas</div>' : nextMtgs.slice(0,8).map(m => meetingRow(m)).join('')}
-        ${nextMtgs.length > 8 ? `<div style="text-align:center;padding:10px;font-size:12px;color:var(--text-muted)">+${nextMtgs.length-8} más</div>` : ''}
+        ${nextMtgs.length > 8 ? `<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border)">+${nextMtgs.length-8} más esta semana</div>` : ''}
       </div>
     </div>
   `;

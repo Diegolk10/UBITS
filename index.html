@@ -719,9 +719,18 @@ const MACRO_INDUSTRY_MAP = {
 
 function getMacroIndustry(ind) {
   if (!ind) return 'Otras industrias';
+  // Direct match (readable text from company)
+  if (Object.keys(MACRO_INDUSTRY_MAP).includes(ind)) return ind;
+  // Code match (legacy deal field)
   for (const [macro, codes] of Object.entries(MACRO_INDUSTRY_MAP)) {
     if (codes.includes(ind)) return macro;
   }
+  // Partial text match
+  const indLower = ind.toLowerCase();
+  if (indLower.includes('transport') || indLower.includes('logist')) return 'Transporte y logística';
+  if (indLower.includes('retail') || indLower.includes('comercio')) return 'Retail';
+  if (indLower.includes('agroin') || indLower.includes('aliment')) return 'Agroindustria';
+  if (indLower.includes('servic') || indLower.includes('tecnolog') || indLower.includes('software')) return 'Compañías de servicios';
   return 'Otras industrias';
 }
 
@@ -1500,21 +1509,44 @@ function renderRepDetail(id) {
           </div>
           <button onclick="togglePipelinePanel()" style="font-size:11px;color:var(--text-muted);background:none;border:none;cursor:pointer">✕ cerrar</button>
         </div>
-        ${activeDeals.length === 0 ? '<div class="empty">Sin deals activos</div>' :
-          '<div style="overflow-x:auto"><table class="data-table">' +
-          '<thead><tr><th>Empresa</th><th>Etapa</th><th>Valor CLP</th><th>Licencias</th><th>Industria</th><th>Cierre est.</th></tr></thead>' +
-          '<tbody>' +
-          activeDeals.map(d =>
-            '<tr>' +
-            '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
-            '<td>' + stageBadge(dealProp(d,'dealstage')) + '</td>' +
-            '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
-            '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'licencias_vendidas')||'—') + '</td>' +
-            '<td style="font-size:12px;color:var(--text-secondary)">' + dealIndustry(d) + '</td>' +
-            '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'}) : '—') + '</td>' +
-            '</tr>'
-          ).join('') +
-          '</tbody></table></div>'}
+        ${(() => {
+          const repStages = ['SQL','Opportunity','Upside','Forecast'];
+          const repStageColors = {SQL:'#185FA5',Opportunity:'#1D9E75',Upside:'#854F0B',Forecast:'#534AB7'};
+          const repStageCount = {}, repStageVal = {};
+          activeDeals.forEach(d => {
+            const s = stageLabel(dealProp(d,'dealstage'));
+            repStageCount[s] = (repStageCount[s]||0) + 1;
+            repStageVal[s] = (repStageVal[s]||0) + (parseFloat(dealProp(d,'amount'))||0);
+          });
+          return '<div style="display:flex;gap:8px;padding:12px 14px;flex-wrap:wrap">' +
+            repStages.map(s =>
+              '<div class="pipeline-chip" data-sid="rep-stage-' + s.toLowerCase() + '" onclick="toggleRepStageDeals(this.dataset.sid)" style="cursor:pointer;flex:1;min-width:70px">' +
+              '<div class="pipeline-chip-label" style="color:' + repStageColors[s] + '">' + s + '</div>' +
+              '<div class="pipeline-chip-count">' + (repStageCount[s]||0) + '</div>' +
+              '<div class="pipeline-chip-val">' + fmtCLP(repStageVal[s]||0) + '</div>' +
+              '</div>'
+            ).join('') +
+            '</div>' +
+            repStages.map(s => {
+              const stDeals = activeDeals.filter(d => stageLabel(dealProp(d,'dealstage')) === s);
+              return '<div id="rep-stage-' + s.toLowerCase() + '" style="display:none;border-top:1px solid var(--border)">' +
+                (stDeals.length === 0 ? '<div class="empty">Sin deals en ' + s + '</div>' :
+                '<div style="overflow-x:auto"><table class="data-table">' +
+                '<thead><tr><th>Empresa</th><th>Valor CLP</th><th>Macro industria</th><th>Licencias</th><th>Cierre est.</th></tr></thead>' +
+                '<tbody>' +
+                stDeals.map(d =>
+                  '<tr>' +
+                  '<td><strong>' + dealProp(d,'dealname').replace(/^\[\d+\]\s*/,'') + '</strong></td>' +
+                  '<td style="font-family:DM Mono,monospace;font-size:12px">' + fmtCLP(dealProp(d,'amount')) + '</td>' +
+                  '<td style="font-size:12px;color:var(--text-secondary)">' + dealIndustry(d) + '</td>' +
+                  '<td style="font-size:12px;color:var(--text-secondary)">' + (dealProp(d,'licencias_vendidas')||'—') + '</td>' +
+                  '<td style="font-size:12px;color:var(--text-muted)">' + (dealProp(d,'closedate') ? new Date(dealProp(d,'closedate')).toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'2-digit'}) : '—') + '</td>' +
+                  '</tr>'
+                ).join('') +
+                '</tbody></table></div>') +
+                '</div>';
+            }).join('');
+        })()}
       </div>
 
       ${(() => {
@@ -1913,6 +1945,14 @@ function focusBadge(demos, followups) {
 function toggleWeekDeals() {
   const panel = document.getElementById('week-deals-panel');
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleRepStageDeals(id) {
+  const all = ['rep-stage-sql','rep-stage-opportunity','rep-stage-upside','rep-stage-forecast'];
+  const isOpen = document.getElementById(id)?.style.display !== 'none';
+  all.forEach(sid => { const el = document.getElementById(sid); if(el) el.style.display = 'none'; });
+  const el = document.getElementById(id);
+  if (el && !isOpen) el.style.display = 'block';
 }
 
 function toggleStageDeals(id) {

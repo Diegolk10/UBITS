@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Paleta UBITS */
+  --color-navy-950: #0a1436;
+  --color-navy-900: #12235f;
+  --color-navy-800: #1b3184;
+  --color-navy-700: #2440a8;
+  --color-electric-600: #2a5bff;
+  --color-electric-500: #4d78ff;
+  --color-electric-100: #e5ecff;
+  --color-magenta-600: #e10098;
+  --color-magenta-500: #ff2bb0;
+  --color-magenta-100: #ffe3f5;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: #f6f8fc;
+  color: #0f172a;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Celdas "por completar": se resaltan sutilmente cuando están vacías. */
+.celda-pendiente:placeholder-shown {
+  background-color: color-mix(in srgb, var(--color-magenta-100) 55%, white);
+}
+
+/* Scrollbar discreta para la tabla densa */
+.tabla-scroll::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.tabla-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
